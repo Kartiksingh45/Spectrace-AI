@@ -62,6 +62,58 @@ export type SearchResult = {
   source_metadata: Record<string, unknown>;
 };
 
+export type ChangeRequest = {
+  id: string;
+  project_id: string;
+  request_text: string;
+  request_type: string | null;
+  status: string;
+  created_at: string;
+};
+
+export type RunStep = {
+  step_index: number;
+  tool_name: string | null;
+  input_summary: string;
+  output_summary: string;
+  status: string;
+};
+
+export type EvidenceRef = { chunk_id: string; note: string };
+export type AffectedFile = { file_path: string; reason: string; confidence: "high" | "medium" | "low" };
+export type TaskItem = { category: "frontend" | "backend" | "database" | "testing"; description: string };
+export type TestCaseItem = {
+  kind: "positive" | "negative" | "boundary" | "permission" | "regression";
+  description: string;
+};
+
+export type GeneratedPlan = {
+  summary: string;
+  request_type: string;
+  questions: string[];
+  evidence: EvidenceRef[];
+  affected_files: AffectedFile[];
+  user_story: string;
+  acceptance_criteria: string[];
+  tasks: TaskItem[];
+  test_cases: TestCaseItem[];
+  assumptions: string[];
+  risks: string[];
+  confidence: "high" | "medium" | "low";
+};
+
+export type Run = {
+  id: string;
+  change_request_id: string;
+  status: string;
+  steps: RunStep[];
+  pending_question: string | null;
+  generated_plan: GeneratedPlan | null;
+  plan_id: string | null;
+};
+
+export type Decision = "approved" | "edit_approved" | "rejected" | "regenerate_requested";
+
 export const api = {
   register: (email: string, password: string) =>
     request<User>("/auth/register", { method: "POST", body: JSON.stringify({ email, password }) }),
@@ -89,5 +141,19 @@ export const api = {
     request<{ results: SearchResult[] }>(`/projects/${projectId}/search`, {
       method: "POST",
       body: JSON.stringify({ query, content_type: contentType }),
+    }),
+  createChangeRequest: (projectId: string, requestText: string) =>
+    request<ChangeRequest>(`/projects/${projectId}/requests`, {
+      method: "POST",
+      body: JSON.stringify({ request_text: requestText }),
+    }),
+  analyseRequest: (requestId: string) => request<Run>(`/requests/${requestId}/analyse`, { method: "POST" }),
+  getRun: (runId: string) => request<Run>(`/runs/${runId}`),
+  answerClarification: (runId: string, answer: string) =>
+    request<Run>(`/runs/${runId}/clarification`, { method: "POST", body: JSON.stringify({ answer }) }),
+  submitDecision: (planId: string, decision: Decision, feedback?: string) =>
+    request<Run>(`/plans/${planId}/decision`, {
+      method: "POST",
+      body: JSON.stringify({ decision, feedback: feedback ?? null }),
     }),
 };

@@ -33,6 +33,10 @@ export default function ProjectWorkspacePage() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
+  const [requestText, setRequestText] = useState("");
+  const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
+
   async function loadAll() {
     try {
       const [proj, docs] = await Promise.all([api.getProject(projectId), api.listDocuments(projectId)]);
@@ -89,6 +93,21 @@ export default function ProjectWorkspacePage() {
   async function handleDelete(documentId: string) {
     await api.deleteDocument(projectId, documentId);
     setDocuments((prev) => prev.filter((d) => d.id !== documentId));
+  }
+
+  async function handleNewAnalysis(e: React.FormEvent) {
+    e.preventDefault();
+    if (!requestText.trim()) return;
+    setSubmittingRequest(true);
+    setRequestError(null);
+    try {
+      const changeRequest = await api.createChangeRequest(projectId, requestText.trim());
+      const run = await api.analyseRequest(changeRequest.id);
+      router.push(`/runs/${run.id}`);
+    } catch {
+      setRequestError("Could not start the analysis.");
+      setSubmittingRequest(false);
+    }
   }
 
   async function handleSearch(e: React.FormEvent) {
@@ -186,6 +205,30 @@ export default function ProjectWorkspacePage() {
             ))}
           </ul>
         )}
+      </section>
+
+      <section className="mt-8">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink/50">
+          New analysis
+        </h2>
+        <form onSubmit={handleNewAnalysis} className="flex flex-col gap-2">
+          <textarea
+            id="change-request-text"
+            value={requestText}
+            onChange={(e) => setRequestText(e.target.value)}
+            placeholder="e.g. Make mobile OTP verification mandatory before a user can proceed with a loan application."
+            rows={3}
+            className="rounded-md border border-ink/15 bg-white px-3 py-2 text-sm outline-none focus:border-trace"
+          />
+          <button
+            type="submit"
+            disabled={submittingRequest}
+            className="self-start rounded-md bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+          >
+            {submittingRequest ? "Starting analysis…" : "Analyse this request"}
+          </button>
+        </form>
+        {requestError && <p className="mt-2 text-sm text-red-700">{requestError}</p>}
       </section>
 
       <section className="mt-8">

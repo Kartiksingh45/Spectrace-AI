@@ -31,8 +31,8 @@ the BRD to build backend engineering depth rather than depend on a managed backe
 
 ## Current status
 
-Phase 1 (auth, roles, project CRUD) and Phase 2 (ingestion + retrieval) are built. The LangGraph
-agent workflow, human review, and evaluation are not built yet.
+Phases 1-3 are built: auth/projects, ingestion + retrieval, and the LangGraph agent workflow with
+human review. Evaluation metrics and deployment are not built yet.
 
 - [x] Monorepo scaffold, backend and frontend booting locally
 - [x] User registration / login / logout (httpOnly session cookie)
@@ -40,8 +40,9 @@ agent workflow, human review, and evaluation are not built yet.
 - [x] Requirement document ingestion (PDF/TXT/Markdown → chunks → embeddings)
 - [x] Source-code ZIP ingestion (safe-path validation → chunks → embeddings)
 - [x] Semantic search endpoint (pgvector cosine similarity, project + content-type scoped)
-- [ ] LangGraph agent workflow (classify → retrieve → clarify → generate plan)
-- [ ] Human review workflow (approve / edit / reject / regenerate)
+- [x] LangGraph agent workflow (classify → tool-calling loop → deterministic grounding review →
+      human approval), with real `interrupt()`/resume for clarification and approval
+- [x] Human review workflow (approve / edit-and-approve / reject / regenerate)
 - [ ] Evaluation dataset and metrics
 - [ ] Deployment
 
@@ -98,6 +99,34 @@ curl -s -b cookies.txt -X POST http://localhost:8000/projects/$PROJECT_ID/search
 Both uploads should report `"status":"ready"`; search should return ranked results with plausible
 similarity scores and the correct `content_type` for each filter.
 
+### Verifying the agent workflow
+
+Requires a free [Groq](https://console.groq.com) API key set as `GROQ_API_KEY` in `.env`. With
+requirements/code already uploaded to `$PROJECT_ID` above:
+
+```bash
+CR=$(curl -s -b cookies.txt -X POST http://localhost:8000/projects/$PROJECT_ID/requests \
+  -H "Content-Type: application/json" \
+  -d '{"request_text":"Make mobile OTP verification mandatory before a loan application can proceed."}' \
+  | python -c "import sys,json;print(json.load(sys.stdin)['id'])")
+
+RUN=$(curl -s -b cookies.txt -X POST http://localhost:8000/requests/$CR/analyse)
+echo "$RUN"   # status is one of: awaiting_clarification | awaiting_approval | failed
+
+# If awaiting_clarification, answer it (use the run's "id" from $RUN):
+curl -s -b cookies.txt -X POST http://localhost:8000/runs/<run_id>/clarification \
+  -H "Content-Type: application/json" -d '{"answer":"Trigger OTP at final submission."}'
+
+# Once awaiting_approval, approve it (use the run's "plan_id"):
+curl -s -b cookies.txt -X POST http://localhost:8000/plans/<plan_id>/decision \
+  -H "Content-Type: application/json" -d '{"decision":"approved"}'
+```
+
+Expect: a real classification, evidence cited from your uploaded documents/code, a generated user
+story with acceptance criteria and test cases, and citations that only ever reference chunk ids and
+file paths that genuinely appeared in this run's search results (enforced by a deterministic
+grounding check, not the model's self-report).
+
 ### 3. Frontend (`apps/web`)
 
 ```bash
@@ -121,7 +150,10 @@ then create a project from the dashboard.
 | `JWT_ALGORITHM`                | JWT signing algorithm (default `HS256`)                          |
 | `ACCESS_TOKEN_EXPIRE_MINUTES`  | Session lifetime in minutes                                      |
 | `FRONTEND_ORIGIN`               | Origin allowed by CORS (the Next.js dev/prod URL)                |
-| `GROQ_API_KEY`                 | Reserved — wired in the agent-workflow phase                     |
+| `GROQ_API_KEY`                 | Groq API key — powers classification, tool selection, and plan generation |
+| `GROQ_MODEL_NAME`              | Groq model for the agent (default `llama-3.3-70b-versatile`)      |
+| `AGENT_MAX_STEPS`              | Cap on tool-calling turns before forcing an insufficient-evidence fallback |
+| `AGENT_REVIEW_MAX_RETRIES`     | How many times a plan can be bounced back for ungrounded citations before falling back |
 | `EMBEDDING_MODEL_NAME`         | sentence-transformers model used to embed chunks (default `all-MiniLM-L6-v2`) |
 | `EMBEDDING_DIMENSIONS`        | Must match the model's output dimension (384 for the default)    |
 | `CHUNK_SIZE` / `CHUNK_OVERLAP` | Character-based chunking window for requirement docs and code    |
@@ -143,6 +175,14 @@ then create a project from the dashboard.
 - `documents` — project, filename, kind (`requirement` / `code`), processing status, error
 - `content_chunks` — project, document, content type, text, `pgvector` embedding, source metadata
   (page number for requirement chunks; file path/symbol/line range for code chunks)
+- `change_requests` — project, requester, request text, classification, status
+- `agent_runs` — change request, LangGraph checkpointer thread id, status, timestamps
+- `agent_steps` — run, tool name, input/output summary, status (the visible execution timeline)
+- `generated_plans` — change request, run, version, the full structured plan (JSON)
+- `approvals` — plan, reviewer, decision, feedback, final content (for edit-approve)
 
-Later phases add `change_requests`, `agent_runs`, `agent_steps`, `generated_plans`, `approvals`,
-`evaluation_cases`, and `evaluation_results` (see BRD §10).
+LangGraph's own checkpointer (`langgraph-checkpoint-postgres`) manages a separate set of tables
+(`checkpoints`, `checkpoint_writes`, ...) in the same database, created via its own `.setup()` call
+the first time it runs rather than an Alembic migration.
+
+A later phase adds `evaluation_cases` and `evaluation_results` (see BRD §10).

@@ -10,8 +10,10 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 1440
     frontend_origin: str = "http://localhost:3000"
 
-    # Reserved for a later phase (agent workflow) - not used yet.
     groq_api_key: str = ""
+    groq_model_name: str = "llama-3.3-70b-versatile"
+    agent_max_steps: int = 8
+    agent_review_max_retries: int = 2
 
     embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     embedding_dimensions: int = 384

@@ -38,3 +38,12 @@ def require_project_member(
         # 404 rather than 403 so a project a user cannot access is indistinguishable from one that does not exist.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     return project
+
+
+def get_agent_overrides() -> dict:
+    """Extra kwargs forwarded to build_graph() (agent_model/classifier/plan_generator).
+
+    Empty by default (real Groq is used); tests override this dependency to inject a scripted
+    fake model so the agent's tool-selection loop is deterministic and offline.
+    """
+    return {}

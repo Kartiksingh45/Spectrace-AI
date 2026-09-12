@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, documents, projects, search
+from app.api.routes import auth, documents, plans, projects, requests, search
 from app.core.config import settings
 
 app = FastAPI(title="Spectrace AI API", version="0.1.0")
@@ -18,6 +18,8 @@ app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(documents.router)
 app.include_router(search.router)
+app.include_router(requests.router)
+app.include_router(plans.router)
 
 
 @app.get("/health")

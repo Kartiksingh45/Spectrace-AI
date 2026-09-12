@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_membership
 from app.db.session import get_db
 from app.models.project import Project
 from app.models.project_member import ProjectMember
@@ -13,17 +13,9 @@ from app.schemas.project import ProjectCreate, ProjectOut, ProjectUpdate
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
-def _get_membership(db: Session, project_id: uuid.UUID, user_id: uuid.UUID) -> ProjectMember | None:
-    return (
-        db.query(ProjectMember)
-        .filter(ProjectMember.project_id == project_id, ProjectMember.user_id == user_id)
-        .first()
-    )
-
-
 def _get_owned_project_or_404(db: Session, project_id: uuid.UUID, user: User) -> Project:
     project = db.get(Project, project_id)
-    if not project or not _get_membership(db, project_id, user.id):
+    if not project or not get_membership(db, project_id, user.id):
         # 404 rather than 403 so a project a user cannot access is indistinguishable from one that does not exist.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     if project.owner_id != user.id:
@@ -61,7 +53,7 @@ def get_project(
     project_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> Project:
     project = db.get(Project, project_id)
-    if not project or not _get_membership(db, project_id, user.id):
+    if not project or not get_membership(db, project_id, user.id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     return project
 

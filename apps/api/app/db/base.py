@@ -6,4 +6,4 @@ class Base(DeclarativeBase):
 
 
 # Imported here so Alembic autogenerate can discover every model via Base.metadata.
-from app.models import user, project, project_member  # noqa: E402,F401
+from app.models import user, project, project_member, document, content_chunk  # noqa: E402,F401

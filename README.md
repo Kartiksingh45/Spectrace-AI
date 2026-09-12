@@ -31,15 +31,15 @@ the BRD to build backend engineering depth rather than depend on a managed backe
 
 ## Current status
 
-This is **Phase 1**: authentication, roles, and project CRUD — a real, runnable skeleton. Ingestion,
-semantic search, and the LangGraph agent workflow are not built yet.
+Phase 1 (auth, roles, project CRUD) and Phase 2 (ingestion + retrieval) are built. The LangGraph
+agent workflow, human review, and evaluation are not built yet.
 
 - [x] Monorepo scaffold, backend and frontend booting locally
 - [x] User registration / login / logout (httpOnly session cookie)
 - [x] Project create / list / rename / delete, isolated per user
-- [ ] Requirement document ingestion (PDF/TXT/Markdown → chunks → embeddings)
-- [ ] Source-code ZIP ingestion (safe-path validation → chunks → embeddings)
-- [ ] Semantic search endpoints
+- [x] Requirement document ingestion (PDF/TXT/Markdown → chunks → embeddings)
+- [x] Source-code ZIP ingestion (safe-path validation → chunks → embeddings)
+- [x] Semantic search endpoint (pgvector cosine similarity, project + content-type scoped)
 - [ ] LangGraph agent workflow (classify → retrieve → clarify → generate plan)
 - [ ] Human review workflow (approve / edit / reject / regenerate)
 - [ ] Evaluation dataset and metrics
@@ -63,7 +63,7 @@ pip install -r requirements.txt
 cp .env.example .env
 # edit .env: paste your DATABASE_URL, set a real JWT_SECRET
 
-alembic upgrade head             # creates users, projects, project_members
+alembic upgrade head             # creates users/projects/project_members, then documents/content_chunks + pgvector
 uvicorn app.main:app --reload    # http://localhost:8000
 ```
 
@@ -72,6 +72,31 @@ Run tests (uses an in-memory SQLite DB, no cloud connection needed):
 ```bash
 pytest
 ```
+
+### Verifying ingestion + search
+
+Once `DATABASE_URL` points at a real Postgres and the migration has run:
+
+```bash
+# Register + log in (keep the cookie jar for the authenticated calls below)
+curl -s -c cookies.txt -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" -d '{"email":"you@example.com","password":"hunter2pass"}'
+
+# Create a project
+PROJECT_ID=$(curl -s -b cookies.txt -X POST http://localhost:8000/projects \
+  -H "Content-Type: application/json" -d '{"name":"Demo"}' | python -c "import sys,json;print(json.load(sys.stdin)['id'])")
+
+# Upload a requirement doc and a code ZIP
+curl -s -b cookies.txt -F "file=@requirements.md" http://localhost:8000/projects/$PROJECT_ID/documents
+curl -s -b cookies.txt -F "file=@source.zip" http://localhost:8000/projects/$PROJECT_ID/codebases
+
+# Search
+curl -s -b cookies.txt -X POST http://localhost:8000/projects/$PROJECT_ID/search \
+  -H "Content-Type: application/json" -d '{"query":"mobile OTP verification","content_type":"all"}'
+```
+
+Both uploads should report `"status":"ready"`; search should return ranked results with plausible
+similarity scores and the correct `content_type` for each filter.
 
 ### 3. Frontend (`apps/web`)
 
@@ -97,7 +122,12 @@ then create a project from the dashboard.
 | `ACCESS_TOKEN_EXPIRE_MINUTES`  | Session lifetime in minutes                                      |
 | `FRONTEND_ORIGIN`               | Origin allowed by CORS (the Next.js dev/prod URL)                |
 | `GROQ_API_KEY`                 | Reserved — wired in the agent-workflow phase                     |
-| `EMBEDDING_MODEL_NAME`         | Reserved — sentence-transformers model, wired in ingestion phase |
+| `EMBEDDING_MODEL_NAME`         | sentence-transformers model used to embed chunks (default `all-MiniLM-L6-v2`) |
+| `EMBEDDING_DIMENSIONS`        | Must match the model's output dimension (384 for the default)    |
+| `CHUNK_SIZE` / `CHUNK_OVERLAP` | Character-based chunking window for requirement docs and code    |
+| `MAX_DOCUMENT_SIZE_MB`         | Upload size limit for requirement documents                       |
+| `MAX_ZIP_FILES` / `MAX_ZIP_UNCOMPRESSED_MB` | Safety limits on uploaded code archives              |
+| `MIN_RELEVANCE_SCORE`          | Minimum cosine similarity for a search result to be returned      |
 
 **`apps/web/.env.local`**
 
@@ -105,11 +135,14 @@ then create a project from the dashboard.
 | ---------------------- | --------------------------------- |
 | `NEXT_PUBLIC_API_URL`  | Base URL of the FastAPI backend  |
 
-## Data model (Phase 1)
+## Data model
 
 - `users` — email, password hash, role (`contributor` / `reviewer` / `administrator`), created_at
 - `projects` — name, owner, created_at
 - `project_members` — project ↔ user membership, used to isolate project data
+- `documents` — project, filename, kind (`requirement` / `code`), processing status, error
+- `content_chunks` — project, document, content type, text, `pgvector` embedding, source metadata
+  (page number for requirement chunks; file path/symbol/line range for code chunks)
 
-Later phases add `documents`, `content_chunks`, `change_requests`, `agent_runs`, `agent_steps`,
-`generated_plans`, `approvals`, `evaluation_cases`, and `evaluation_results` (see BRD §10).
+Later phases add `change_requests`, `agent_runs`, `agent_steps`, `generated_plans`, `approvals`,
+`evaluation_cases`, and `evaluation_results` (see BRD §10).

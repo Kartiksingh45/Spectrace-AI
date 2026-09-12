@@ -10,9 +10,20 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 1440
     frontend_origin: str = "http://localhost:3000"
 
-    # Reserved for later phases (ingestion / agent) - not used yet.
+    # Reserved for a later phase (agent workflow) - not used yet.
     groq_api_key: str = ""
+
     embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_dimensions: int = 384
+
+    chunk_size: int = 1000
+    chunk_overlap: int = 150
+
+    max_document_size_mb: int = 20
+    max_zip_files: int = 2000
+    max_zip_uncompressed_mb: int = 200
+
+    min_relevance_score: float = 0.2
 
 
 settings = Settings()

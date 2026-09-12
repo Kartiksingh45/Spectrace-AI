@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, ApiError, Project } from "@/lib/api";
@@ -80,11 +81,13 @@ export default function DashboardPage() {
       ) : (
         <ul className="flex flex-col gap-2">
           {projects.map((project) => (
-            <li
-              key={project.id}
-              className="rounded-md border border-ink/10 bg-white px-4 py-3 text-sm text-ink"
-            >
-              {project.name}
+            <li key={project.id}>
+              <Link
+                href={`/projects/${project.id}`}
+                className="block rounded-md border border-ink/10 bg-white px-4 py-3 text-sm text-ink hover:border-trace"
+              >
+                {project.name}
+              </Link>
             </li>
           ))}
         </ul>

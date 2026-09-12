@@ -17,8 +17,10 @@ down_revision: Union[str, None] = "0001"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-content_kind = postgresql.ENUM("requirement", "code", name="content_kind")
-document_status = postgresql.ENUM("uploaded", "processing", "ready", "failed", name="document_status")
+content_kind = postgresql.ENUM("requirement", "code", name="content_kind", create_type=False)
+document_status = postgresql.ENUM(
+    "uploaded", "processing", "ready", "failed", name="document_status", create_type=False
+)
 
 EMBEDDING_DIMENSIONS = 384
 

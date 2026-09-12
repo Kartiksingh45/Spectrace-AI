@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
@@ -15,6 +16,8 @@ from app.schemas.document import DocumentOut
 from app.services.archive import UnsafeArchiveError, extract_safe
 from app.services.chunking import DocumentParseError, chunk_code_file, parse_requirement_file
 from app.services.embeddings import embed_batch
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["documents"])
 
@@ -57,8 +60,14 @@ async def upload_requirement_document(
                 )
         document.status = DocumentStatus.ready
     except DocumentParseError as exc:
+        db.rollback()
         document.status = DocumentStatus.failed
         document.error = str(exc)
+    except Exception:
+        db.rollback()
+        logger.exception("Requirement document ingestion failed for document %s", document.id)
+        document.status = DocumentStatus.failed
+        document.error = "Ingestion failed due to an internal error"
 
     db.commit()
     db.refresh(document)
@@ -95,23 +104,29 @@ async def upload_codebase(
             continue  # not actually a text source file despite its extension; skip it
         candidates.extend(chunk_code_file(text, relpath))
 
-    if not candidates:
-        document.status = DocumentStatus.failed
-        document.error = "No supported source files found in archive"
-    else:
-        vectors = embed_batch([c.text for c in candidates])
-        for candidate, vector in zip(candidates, vectors):
-            db.add(
-                ContentChunk(
-                    project_id=project.id,
-                    document_id=document.id,
-                    content_type=ContentKind.code,
-                    text=candidate.text,
-                    embedding=vector,
-                    source_metadata=candidate.metadata,
+    try:
+        if not candidates:
+            document.status = DocumentStatus.failed
+            document.error = "No supported source files found in archive"
+        else:
+            vectors = embed_batch([c.text for c in candidates])
+            for candidate, vector in zip(candidates, vectors):
+                db.add(
+                    ContentChunk(
+                        project_id=project.id,
+                        document_id=document.id,
+                        content_type=ContentKind.code,
+                        text=candidate.text,
+                        embedding=vector,
+                        source_metadata=candidate.metadata,
+                    )
                 )
-            )
-        document.status = DocumentStatus.ready
+            document.status = DocumentStatus.ready
+    except Exception:
+        db.rollback()
+        logger.exception("Codebase ingestion failed for document %s", document.id)
+        document.status = DocumentStatus.failed
+        document.error = "Ingestion failed due to an internal error"
 
     db.commit()
     db.refresh(document)

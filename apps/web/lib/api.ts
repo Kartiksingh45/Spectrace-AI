@@ -81,7 +81,10 @@ export type RunStep = {
 
 export type EvidenceRef = { chunk_id: string; note: string };
 export type AffectedFile = { file_path: string; reason: string; confidence: "high" | "medium" | "low" };
-export type TaskItem = { category: "frontend" | "backend" | "database" | "testing"; description: string };
+export type TaskItem = {
+  category: "frontend" | "backend" | "database" | "testing" | "documentation";
+  description: string;
+};
 export type TestCaseItem = {
   kind: "positive" | "negative" | "boundary" | "permission" | "regression";
   description: string;
@@ -113,6 +116,57 @@ export type Run = {
 };
 
 export type Decision = "approved" | "edit_approved" | "rejected" | "regenerate_requested";
+
+export type EvaluationCategory = "clear" | "cross_source" | "ambiguous" | "unsupported";
+export type EvaluationBehavior = "direct_answer" | "clarification" | "insufficient_evidence" | "failed";
+
+export type EvaluationCase = {
+  id: string;
+  title: string;
+  request_text: string;
+  category: EvaluationCategory;
+  expected_behavior: EvaluationBehavior;
+  expected_sources: string[];
+  expected_affected_files: string[];
+  created_at: string;
+};
+
+export type EvaluationCaseInput = {
+  title: string;
+  request_text: string;
+  category: EvaluationCategory;
+  expected_behavior: EvaluationBehavior;
+  expected_sources?: string[];
+  expected_affected_files?: string[];
+};
+
+export type EvaluationResult = {
+  id: string;
+  case_id: string;
+  run_id: string | null;
+  actual_behavior: EvaluationBehavior;
+  retrieved_sources: string[];
+  affected_files: string[];
+  confidence: string | null;
+  passed: boolean;
+  notes: string | null;
+  latency_ms: number;
+  created_at: string;
+};
+
+export type EvaluationReport = {
+  total_cases: number;
+  total_results: number;
+  overall_pass_rate: number | null;
+  retrieval_hit_rate: number | null;
+  affected_file_precision: number | null;
+  citation_correctness: number | null;
+  clarification_accuracy: number | null;
+  unsupported_claim_rate: number | null;
+  reviewer_acceptance: number | null;
+  median_latency_ms: number | null;
+  max_latency_ms: number | null;
+};
 
 export const api = {
   register: (email: string, password: string) =>
@@ -156,4 +210,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ decision, feedback: feedback ?? null }),
     }),
+  listEvaluationCases: (projectId: string) =>
+    request<EvaluationCase[]>(`/projects/${projectId}/evaluation/cases`),
+  createEvaluationCase: (projectId: string, input: EvaluationCaseInput) =>
+    request<EvaluationCase>(`/projects/${projectId}/evaluation/cases`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  deleteEvaluationCase: (projectId: string, caseId: string) =>
+    request<void>(`/projects/${projectId}/evaluation/cases/${caseId}`, { method: "DELETE" }),
+  runEvaluation: (projectId: string) =>
+    request<EvaluationResult[]>(`/projects/${projectId}/evaluation/run`, { method: "POST" }),
+  getEvaluationReport: (projectId: string) =>
+    request<EvaluationReport>(`/projects/${projectId}/evaluation/report`),
 };

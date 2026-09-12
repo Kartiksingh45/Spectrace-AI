@@ -130,9 +130,14 @@ export default function ProjectWorkspacePage() {
       <Link href="/dashboard" className="text-sm text-trace">
         ← All projects
       </Link>
-      <h1 className="mt-2 font-serif text-2xl font-semibold text-ink">
-        {project?.name ?? "Loading…"}
-      </h1>
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <h1 className="font-serif text-2xl font-semibold text-ink">
+          {project?.name ?? "Loading…"}
+        </h1>
+        <Link href={`/projects/${projectId}/evaluation`} className="text-sm text-trace">
+          Evaluation →
+        </Link>
+      </div>
 
       {loadError && <p className="mt-4 text-sm text-red-700">{loadError}</p>}
 

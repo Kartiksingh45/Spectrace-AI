@@ -6,6 +6,7 @@ in sync here after every invoke/resume rather than read directly from LangGraph'
 internals.
 """
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -20,6 +21,8 @@ from app.models.agent_step import AgentStep
 from app.models.change_request import ChangeRequest
 from app.models.enums import AgentRunStatus, ApprovalDecision, ChangeRequestStatus
 from app.models.generated_plan import GeneratedPlan
+
+logger = logging.getLogger(__name__)
 
 
 def _build_step_rows(messages: list) -> list[dict[str, Any]]:
@@ -107,6 +110,29 @@ def _sync_run_state(db: Session, run: AgentRun, change_request: ChangeRequest, r
     db.commit()
 
 
+def _invoke_and_sync(
+    db: Session, run: AgentRun, change_request: ChangeRequest, graph, graph_input, config: dict
+) -> AgentRun:
+    """Run the graph and sync state, leaving the run/change_request cleanly marked `failed`
+    (rather than stuck at `running` forever) if the invocation raises - e.g. a model/API error.
+    Without this, a mid-flight exception left no record of failure, and analyse's idempotency
+    check would then mistake the stale `running` status for an in-flight run and silently no-op
+    on retry instead of surfacing (or letting the user retry) the failure.
+    """
+    try:
+        result = graph.invoke(graph_input, config)
+    except Exception:
+        db.rollback()
+        logger.exception("Agent run %s failed", run.id)
+        run.status = AgentRunStatus.failed
+        run.ended_at = datetime.now(timezone.utc)
+        change_request.status = ChangeRequestStatus.failed
+        db.commit()
+        raise
+    _sync_run_state(db, run, change_request, result)
+    return run
+
+
 def start_run(db: Session, change_request: ChangeRequest, checkpointer, **graph_kwargs) -> AgentRun:
     thread_id = str(uuid.uuid4())
     run = AgentRun(change_request_id=change_request.id, thread_id=thread_id, status=AgentRunStatus.running)
@@ -128,10 +154,7 @@ def start_run(db: Session, change_request: ChangeRequest, checkpointer, **graph_
         "final_decision": None,
     }
     config = {"configurable": {"thread_id": thread_id}}
-    result = graph.invoke(initial_state, config)
-
-    _sync_run_state(db, run, change_request, result)
-    return run
+    return _invoke_and_sync(db, run, change_request, graph, initial_state, config)
 
 
 def resume_clarification(
@@ -139,9 +162,7 @@ def resume_clarification(
 ) -> AgentRun:
     graph = build_graph(db, change_request.project_id, checkpointer, **graph_kwargs)
     config = {"configurable": {"thread_id": run.thread_id}}
-    result = graph.invoke(Command(resume=answer), config)
-    _sync_run_state(db, run, change_request, result)
-    return run
+    return _invoke_and_sync(db, run, change_request, graph, Command(resume=answer), config)
 
 
 def resume_decision(
@@ -154,6 +175,4 @@ def resume_decision(
 ) -> AgentRun:
     graph = build_graph(db, change_request.project_id, checkpointer, **graph_kwargs)
     config = {"configurable": {"thread_id": run.thread_id}}
-    result = graph.invoke(Command(resume=decision), config)
-    _sync_run_state(db, run, change_request, result)
-    return run
+    return _invoke_and_sync(db, run, change_request, graph, Command(resume=decision), config)

@@ -33,7 +33,10 @@ is genuinely missing - do not ask about things you could instead search for.
 - generate_plan: call this once you have gathered enough evidence to responsibly propose a plan. \
 You may only cite chunk_ids and file paths that actually appeared in your tool results.
 
-Call exactly one tool per turn."""
+You have a HARD LIMIT of {max_steps} tool calls total this run - this call is tool call number \
+{call_number} of {max_steps}. Do not re-run near-duplicate searches (e.g. the same concept with a \
+slightly reworded query) hoping for a better match - a search you already ran will not return \
+better results the second time. {budget_instruction} Call exactly one tool per turn."""
 
 
 def _grounding_errors(plan: dict[str, Any], evidence: list[dict[str, Any]]) -> list[str]:
@@ -90,7 +93,31 @@ def build_graph(
         return {"request_type": classifier(state["request_text"])}
 
     def agent_node(state: AgentState) -> dict:
-        system = SystemMessage(AGENT_SYSTEM_PROMPT.format(request_type=state.get("request_type")))
+        call_number = state.get("step_count", 0) + 1
+        remaining_after_this = settings.agent_max_steps - call_number
+        if remaining_after_this <= 0:
+            budget_instruction = (
+                "This is your LAST allowed tool call - you MUST call generate_plan now with "
+                "whatever evidence you have gathered, even if it feels incomplete."
+            )
+        elif remaining_after_this <= 2:
+            budget_instruction = (
+                f"Only {remaining_after_this} tool call(s) remain after this one - call generate_plan "
+                "now unless you are still missing evidence for a core part of the request."
+            )
+        else:
+            budget_instruction = (
+                "If you already have at least one relevant requirement chunk and one relevant code "
+                "chunk, call generate_plan now rather than continuing to search."
+            )
+        system = SystemMessage(
+            AGENT_SYSTEM_PROMPT.format(
+                request_type=state.get("request_type"),
+                max_steps=settings.agent_max_steps,
+                call_number=call_number,
+                budget_instruction=budget_instruction,
+            )
+        )
         if not state["messages"]:
             first = HumanMessage(state["request_text"])
             response = model_with_tools.invoke([system, first])

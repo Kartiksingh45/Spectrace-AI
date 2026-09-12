@@ -102,7 +102,7 @@ def analyse_request(
     if existing and existing.status in (AgentRunStatus.running, AgentRunStatus.awaiting_clarification, AgentRunStatus.awaiting_approval):
         return _run_to_out(db, existing)
 
-    if change_request.status not in (ChangeRequestStatus.pending,):
+    if change_request.status not in (ChangeRequestStatus.pending, ChangeRequestStatus.failed):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This request has already been analysed")
 
     run = start_run(db, change_request, checkpointer, **agent_overrides)

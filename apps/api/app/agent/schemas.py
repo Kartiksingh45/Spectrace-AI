@@ -17,7 +17,7 @@ class AffectedFile(BaseModel):
 
 
 class TaskItem(BaseModel):
-    category: Literal["frontend", "backend", "database", "testing"]
+    category: Literal["frontend", "backend", "database", "testing", "documentation"]
     description: str
 
 

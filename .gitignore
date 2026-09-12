@@ -1,0 +1,25 @@
+# Node
+node_modules/
+.next/
+apps/web/.env*.local
+npm-debug.log*
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Env
+.env
+apps/api/.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/*
+!.vscode/extensions.json

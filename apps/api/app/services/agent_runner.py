@@ -245,6 +245,12 @@ def _invoke_and_sync(
 
 
 def start_run(db: Session, change_request: ChangeRequest, checkpointer, **graph_kwargs) -> AgentRun:
+    """Creates the run row and returns immediately - the graph itself is NOT executed here.
+    Callers that need the run to actually happen must follow this with `execute_run` (directly,
+    for a synchronous caller like a test, or scheduled as a FastAPI BackgroundTask so the
+    triggering HTTP request doesn't block for the run's full duration - which can exceed a host's
+    proxy timeout, e.g. Render's ~60s limit, for a run that legitimately takes over a minute).
+    """
     thread_id = str(uuid.uuid4())
     run = AgentRun(change_request_id=change_request.id, thread_id=thread_id, status=AgentRunStatus.running)
     db.add(run)
@@ -252,7 +258,10 @@ def start_run(db: Session, change_request: ChangeRequest, checkpointer, **graph_
     db.commit()
     db.refresh(run)
     logger.info("agent_run_started run_id=%s change_request_id=%s", run.id, change_request.id)
+    return run
 
+
+def execute_run(db: Session, run: AgentRun, change_request: ChangeRequest, checkpointer, **graph_kwargs) -> AgentRun:
     graph = build_graph(db, change_request.project_id, checkpointer, **graph_kwargs)
     initial_state = {
         "messages": [],
@@ -265,11 +274,19 @@ def start_run(db: Session, change_request: ChangeRequest, checkpointer, **graph_
         "step_count": 0,
         "final_decision": None,
     }
-    config = {"configurable": {"thread_id": thread_id}}
+    config = {"configurable": {"thread_id": run.thread_id}}
     return _invoke_and_sync(db, run, change_request, graph, initial_state, config)
 
 
-def resume_clarification(
+def prepare_resume(db: Session, run: AgentRun) -> None:
+    """Flips the run back to `running` immediately, before the (potentially slow) actual resume
+    is scheduled as a background task - gives a poller something to see right away rather than
+    the run appearing stuck at its old paused status until the background task finishes."""
+    run.status = AgentRunStatus.running
+    db.commit()
+
+
+def execute_resume_clarification(
     db: Session, run: AgentRun, change_request: ChangeRequest, answer: str, checkpointer, **graph_kwargs
 ) -> AgentRun:
     graph = build_graph(db, change_request.project_id, checkpointer, **graph_kwargs)
@@ -277,7 +294,7 @@ def resume_clarification(
     return _invoke_and_sync(db, run, change_request, graph, Command(resume=answer), config)
 
 
-def resume_decision(
+def execute_resume_decision(
     db: Session,
     run: AgentRun,
     change_request: ChangeRequest,

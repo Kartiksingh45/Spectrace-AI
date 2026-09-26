@@ -255,21 +255,40 @@ export default function RunDetailPage() {
   const [editRisks, setEditRisks] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
 
-  async function load() {
+  async function load(): Promise<Run | undefined> {
     try {
       const data = await api.getRun(runId);
       setRun(data);
+      return data;
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         router.push("/sign-in");
       } else {
         setError("Could not load this run.");
       }
+      return undefined;
     }
   }
 
   useEffect(() => {
-    load();
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    // The agent now executes in the background (a full run can take over a minute, longer than
+    // many hosts' proxy timeout), so this page polls while a run is actively in progress rather
+    // than assuming the one initial fetch already reflects the final state.
+    async function poll() {
+      const data = await load();
+      if (!cancelled && data?.status === "running") {
+        timer = setTimeout(poll, 2000);
+      }
+    }
+    poll();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]);
 

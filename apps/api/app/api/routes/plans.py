@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -16,7 +16,7 @@ from app.models.enums import AgentRunStatus
 from app.models.generated_plan import GeneratedPlan
 from app.models.user import User
 from app.schemas.agent import DecisionRequest, RunOut
-from app.services.agent_runner import resume_decision
+from app.services.agent_runner import execute_resume_decision, prepare_resume
 
 router = APIRouter(tags=["plans"])
 
@@ -25,6 +25,7 @@ router = APIRouter(tags=["plans"])
 def submit_decision(
     plan_id: uuid.UUID,
     payload: DecisionRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(require_reviewer),
     checkpointer=Depends(get_checkpointer),
@@ -63,7 +64,9 @@ def submit_decision(
     )
     db.commit()
 
-    run = resume_decision(
+    prepare_resume(db, run)
+    background_tasks.add_task(
+        execute_resume_decision,
         db,
         run,
         change_request,

@@ -2,7 +2,7 @@ import asyncio
 import json
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -24,7 +24,7 @@ from app.schemas.agent import (
     RunOut,
     StepOut,
 )
-from app.services.agent_runner import resume_clarification, start_run
+from app.services.agent_runner import execute_resume_clarification, execute_run, prepare_resume, start_run
 
 router = APIRouter(tags=["requests"])
 
@@ -143,6 +143,7 @@ def _run_to_out(db: Session, run: AgentRun) -> RunOut:
 @router.post("/requests/{request_id}/analyse", response_model=RunOut)
 def analyse_request(
     request_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     checkpointer=Depends(get_checkpointer),
@@ -163,6 +164,11 @@ def analyse_request(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This request has already been analysed")
 
     run = start_run(db, change_request, checkpointer, **agent_overrides)
+    # Runs in the background so this request returns immediately - a full run can legitimately
+    # take over a minute, longer than many hosts' proxy timeout (e.g. Render's ~60s), which would
+    # otherwise kill the connection mid-run. The frontend polls GET /runs/{id} (and/or the SSE
+    # /requests/{id}/events stream) for progress and the eventual result.
+    background_tasks.add_task(execute_run, db, run, change_request, checkpointer, **agent_overrides)
     return _run_to_out(db, run)
 
 
@@ -237,6 +243,7 @@ def get_run(run_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depen
 def answer_clarification(
     run_id: uuid.UUID,
     payload: ClarificationAnswer,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     checkpointer=Depends(get_checkpointer),
@@ -246,5 +253,8 @@ def answer_clarification(
     if run.status != AgentRunStatus.awaiting_clarification:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This run is not awaiting clarification")
 
-    run = resume_clarification(db, run, change_request, payload.answer, checkpointer, **agent_overrides)
+    prepare_resume(db, run)
+    background_tasks.add_task(
+        execute_resume_clarification, db, run, change_request, payload.answer, checkpointer, **agent_overrides
+    )
     return _run_to_out(db, run)

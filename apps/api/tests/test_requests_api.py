@@ -70,6 +70,26 @@ def _register_and_create_project(client, db_session, email="pm@example.com"):
     return project
 
 
+def _analyse(client, request_id: str) -> dict:
+    """analyse/clarification/decision now all execute the (possibly slow) agent turn as a
+    FastAPI BackgroundTask, so their own HTTP response reflects the state from just before that
+    task ran, not the outcome - re-fetch the run afterward for the up-to-date state, exactly as
+    the real frontend now does by polling GET /runs/{id}. TestClient happens to run the
+    background task to completion before this call returns, so a single re-fetch is enough here."""
+    started = client.post(f"/requests/{request_id}/analyse").json()
+    return client.get(f"/runs/{started['id']}").json()
+
+
+def _answer_clarification(client, run_id: str, answer: str) -> dict:
+    client.post(f"/runs/{run_id}/clarification", json={"answer": answer})
+    return client.get(f"/runs/{run_id}").json()
+
+
+def _decide(client, plan_id: str, payload: dict) -> dict:
+    started = client.post(f"/plans/{plan_id}/decision", json=payload).json()
+    return client.get(f"/runs/{started['id']}").json()
+
+
 def test_analyse_reaches_awaiting_approval(client, db_session, agent_overrides):
     project = _register_and_create_project(client, db_session)
     agent_overrides([_tool_call("generate_plan")])
@@ -78,7 +98,7 @@ def test_analyse_reaches_awaiting_approval(client, db_session, agent_overrides):
         f"/projects/{project['id']}/requests", json={"request_text": "Add mobile OTP"}
     ).json()
 
-    run = client.post(f"/requests/{change_request['id']}/analyse").json()
+    run = _analyse(client, change_request["id"])
 
     assert run["status"] == "awaiting_approval"
     assert run["generated_plan"]["summary"] == "summary"
@@ -107,15 +127,15 @@ def test_clarification_flow_then_approval(client, db_session, agent_overrides):
         f"/projects/{project['id']}/requests", json={"request_text": "Add mobile OTP"}
     ).json()
 
-    run = client.post(f"/requests/{change_request['id']}/analyse").json()
+    run = _analyse(client, change_request["id"])
     assert run["status"] == "awaiting_clarification"
     assert run["pending_question"] == "When should OTP trigger?"
 
     agent_overrides([_tool_call("generate_plan")])
-    run = client.post(f"/runs/{run['id']}/clarification", json={"answer": "Before final submit"}).json()
+    run = _answer_clarification(client, run["id"], "Before final submit")
     assert run["status"] == "awaiting_approval"
 
-    decision = client.post(f"/plans/{run['plan_id']}/decision", json={"decision": "approved"}).json()
+    decision = _decide(client, run["plan_id"], {"decision": "approved"})
     assert decision["status"] == "completed"
 
     # analyse on an already-approved request should now refuse rather than silently re-running.
@@ -129,7 +149,7 @@ def test_rejected_plan_is_never_marked_approved(client, db_session, agent_overri
     change_request = client.post(
         f"/projects/{project['id']}/requests", json={"request_text": "Add mobile OTP"}
     ).json()
-    run = client.post(f"/requests/{change_request['id']}/analyse").json()
+    run = _analyse(client, change_request["id"])
 
     client.post(f"/plans/{run['plan_id']}/decision", json={"decision": "rejected", "feedback": "not needed"})
 
@@ -150,13 +170,11 @@ def test_regenerate_produces_new_plan_version(client, db_session, agent_override
     change_request = client.post(
         f"/projects/{project['id']}/requests", json={"request_text": "Add mobile OTP"}
     ).json()
-    run = client.post(f"/requests/{change_request['id']}/analyse").json()
+    run = _analyse(client, change_request["id"])
     first_plan_id = run["plan_id"]
 
     agent_overrides([_tool_call("generate_plan", call_id="2")], plan_generator=plan_generator)
-    run = client.post(
-        f"/plans/{first_plan_id}/decision", json={"decision": "regenerate_requested", "feedback": "add detail"}
-    ).json()
+    run = _decide(client, first_plan_id, {"decision": "regenerate_requested", "feedback": "add detail"})
 
     assert calls["n"] == 2
     assert run["status"] == "awaiting_approval"
@@ -170,13 +188,10 @@ def test_edit_approved_persists_final_content_as_the_plan_of_record(client, db_s
     change_request = client.post(
         f"/projects/{project['id']}/requests", json={"request_text": "Add mobile OTP"}
     ).json()
-    run = client.post(f"/requests/{change_request['id']}/analyse").json()
+    run = _analyse(client, change_request["id"])
 
     edited = _plan(summary="Reviewer-rewritten summary", confidence="high").model_dump()
-    run = client.post(
-        f"/plans/{run['plan_id']}/decision",
-        json={"decision": "edit_approved", "final_content": edited},
-    ).json()
+    run = _decide(client, run["plan_id"], {"decision": "edit_approved", "final_content": edited})
 
     assert run["status"] == "completed"
     assert run["generated_plan"]["summary"] == "Reviewer-rewritten summary"
@@ -194,7 +209,7 @@ def test_edit_approved_with_invalid_final_content_is_rejected(client, db_session
     change_request = client.post(
         f"/projects/{project['id']}/requests", json={"request_text": "Add mobile OTP"}
     ).json()
-    run = client.post(f"/requests/{change_request['id']}/analyse").json()
+    run = _analyse(client, change_request["id"])
 
     resp = client.post(
         f"/plans/{run['plan_id']}/decision",

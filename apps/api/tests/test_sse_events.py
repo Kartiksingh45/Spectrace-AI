@@ -65,7 +65,10 @@ def test_stream_events_replays_history_and_ends_with_done_for_a_finished_run(cli
         change_request = client.post(
             f"/projects/{project['id']}/requests", json={"request_text": "Add mobile OTP"}
         ).json()
-        run = client.post(f"/requests/{change_request['id']}/analyse").json()
+        started = client.post(f"/requests/{change_request['id']}/analyse").json()
+        # analyse now runs the agent turn as a background task - its own response reflects the
+        # state from just before that task ran, so re-fetch for the up-to-date state.
+        run = client.get(f"/runs/{started['id']}").json()
         assert run["status"] == "awaiting_approval"
 
         with client.stream("GET", f"/requests/{change_request['id']}/events") as response:

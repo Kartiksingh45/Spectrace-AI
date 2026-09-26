@@ -66,7 +66,10 @@ def test_run_and_steps_record_duration(client):
         change_request = client.post(
             f"/projects/{project['id']}/requests", json={"request_text": "Add mobile OTP"}
         ).json()
-        run = client.post(f"/requests/{change_request['id']}/analyse").json()
+        started = client.post(f"/requests/{change_request['id']}/analyse").json()
+        # analyse now runs the agent turn as a background task - its own response reflects the
+        # state from just before that task ran, so re-fetch for the up-to-date state.
+        run = client.get(f"/runs/{started['id']}").json()
     finally:
         app.dependency_overrides.pop(get_checkpointer, None)
         app.dependency_overrides.pop(get_agent_overrides, None)

@@ -45,6 +45,13 @@ def _configure_agent(responses, plan_generator=lambda *a: _plan()):
     }
 
 
+def _analyse(client, request_id: str) -> dict:
+    """analyse executes the agent turn as a FastAPI BackgroundTask, so its own HTTP response
+    reflects the state from just before that task ran - re-fetch for the up-to-date state."""
+    started = client.post(f"/requests/{request_id}/analyse").json()
+    return client.get(f"/runs/{started['id']}").json()
+
+
 def test_contributor_cannot_decide_on_a_plan(client, db_session):
     client.post("/auth/register", json={"email": "contributor@example.com", "password": "hunter2pass"})
     project = client.post("/projects", json={"name": "Demo"}).json()
@@ -52,7 +59,7 @@ def test_contributor_cannot_decide_on_a_plan(client, db_session):
     change_request = client.post(
         f"/projects/{project['id']}/requests", json={"request_text": "Add mobile OTP"}
     ).json()
-    run = client.post(f"/requests/{change_request['id']}/analyse").json()
+    run = _analyse(client, change_request["id"])
 
     # Registering user defaults to the "contributor" role, which may submit requests but not decide on them.
     resp = client.post(f"/plans/{run['plan_id']}/decision", json={"decision": "approved"})
@@ -71,11 +78,12 @@ def test_reviewer_can_decide_on_a_plan(client, db_session):
     change_request = client.post(
         f"/projects/{project['id']}/requests", json={"request_text": "Add mobile OTP"}
     ).json()
-    run = client.post(f"/requests/{change_request['id']}/analyse").json()
+    run = _analyse(client, change_request["id"])
 
     resp = client.post(f"/plans/{run['plan_id']}/decision", json={"decision": "approved"})
     assert resp.status_code == 200
-    assert resp.json()["status"] == "completed"
+    run = client.get(f"/runs/{run['id']}").json()
+    assert run["status"] == "completed"
 
     app.dependency_overrides.pop(get_checkpointer, None)
     app.dependency_overrides.pop(get_agent_overrides, None)

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_project_member
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.project import Project
 from app.schemas.document import SearchRequest, SearchResponse, SearchResult
@@ -20,7 +21,7 @@ def search(
     query_vector = embed_text(payload.query)
     rows = search_chunks(
         db, project.id, query_vector, payload.content_type, payload.limit,
-        query_text=payload.query, use_reranker=True,
+        query_text=payload.query, use_reranker=settings.enable_reranker,
     )
 
     results = [

@@ -231,5 +231,10 @@ live paid account, so this is "ready to deploy", not "currently deployed":
   (`apps/api/Dockerfile` runs `alembic upgrade head` then `uvicorn` on start) - set the
   `DATABASE_URL`, `JWT_SECRET`, `FRONTEND_ORIGIN`, and `GEMINI_API_KEY` secrets in the Render
   dashboard. Any other Docker-friendly host works the same way (Fly.io, Railway, a VM).
+  **Memory:** Render's free tier caps a service at 512MB RAM, which is tight for a Python process
+  that loads PyTorch plus two sentence-transformers models (the embedding model, always on, and
+  the optional cross-encoder reranker) - observed in practice to get OOM-killed with both loaded.
+  Set `ENABLE_RERANKER=false` to skip loading the second model; if it's still tight, the real fix
+  is a plan with more memory, not further trimming (the embedding model itself isn't optional).
 - **Database:** the existing free-tier Neon/Supabase Postgres already in use for development works
   unchanged in production - just point `DATABASE_URL` at it.

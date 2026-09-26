@@ -18,16 +18,20 @@ class Settings(BaseSettings):
 
     gemini_api_key: str = ""
     gemini_model_name: str = "gemini-3.5-flash-lite"
-    # Without an explicit timeout a hung network call (observed in production - two independent
-    # runs each stuck indefinitely on the agent's tool-calling call, past classify) blocks forever
-    # with no ceiling, orphaning the run at "running" - a background task that raises is at least
-    # caught by _invoke_and_sync and marks the run "failed" instead of stuck forever.
+    # Defensive ceiling on a call that could otherwise hang indefinitely - not the cause of the
+    # "stuck forever" issue actually observed in production (that was the host running out of
+    # memory and getting OOM-killed, not a hung network call), but still worth having.
     gemini_request_timeout_seconds: int = 30
     agent_max_steps: int = 8
     agent_review_max_retries: int = 2
 
     embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     embedding_dimensions: int = 384
+    # The cross-encoder reranker loads a second PyTorch model on top of the embedding model - on a
+    # memory-constrained host (e.g. Render's free 512MB tier, which was observed to OOM-kill this
+    # process) that second model can be the difference between fitting and not. It's optional
+    # (BRD: "a reranker that improves ordering") - set to false to skip loading it entirely.
+    enable_reranker: bool = True
 
     chunk_size: int = 1000
     chunk_overlap: int = 150

@@ -50,19 +50,3 @@ class ApprovalDecision(str, enum.Enum):
     edit_approved = "edit_approved"
     rejected = "rejected"
     regenerate_requested = "regenerate_requested"
-
-
-class EvaluationCategory(str, enum.Enum):
-    """The four BRD 14.1 dataset buckets (6/4/3/2 minimum cases respectively)."""
-
-    clear = "clear"
-    cross_source = "cross_source"
-    ambiguous = "ambiguous"
-    unsupported = "unsupported"
-
-
-class EvaluationBehavior(str, enum.Enum):
-    direct_answer = "direct_answer"
-    clarification = "clarification"
-    insufficient_evidence = "insufficient_evidence"
-    failed = "failed"

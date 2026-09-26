@@ -1,7 +1,10 @@
 # Node
 node_modules/
 .next/
+.open-next/
+.wrangler/
 apps/web/.env*.local
+apps/web/.env.production
 npm-debug.log*
 *.tsbuildinfo
 

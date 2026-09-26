@@ -6,7 +6,7 @@ from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
-from app.agent.graph import build_graph
+from app.agent.graph import _fallback_plan, build_graph
 from app.agent.schemas import EvidenceRef, GeneratedPlan
 
 
@@ -19,6 +19,23 @@ class ScriptedModel(FakeMessagesListChatModel):
 
     def bind_tools(self, tools, **kwargs):
         return self
+
+
+def _gemini_client_error():
+    from google.genai.errors import ClientError as GeminiClientError
+
+    return GeminiClientError(400, {"error": {"message": "tool call validation failed"}}, None)
+
+
+class RaisingModel(FakeMessagesListChatModel):
+    """Simulates the provider hard-rejecting a hallucinated tool call (a real failure mode seen
+    with some hosted models) instead of returning a normal response."""
+
+    def bind_tools(self, tools, **kwargs):
+        return self
+
+    def _generate(self, *args, **kwargs):
+        raise _gemini_client_error()
 
 
 def _tool_call(name: str, args: dict | None = None, call_id: str = "1") -> AIMessage:
@@ -130,6 +147,52 @@ def test_step_cap_forces_insufficient_evidence_fallback():
 
     assert result["generated_plan"]["confidence"] == "low"
     assert "Insufficient evidence" in result["generated_plan"]["summary"]
+
+
+def test_fallback_plan_surfaces_accumulated_evidence_as_low_confidence_leads():
+    # The agent found real (if unconfirmed) leads before running out of budget - the fallback
+    # should surface them as low-confidence candidates rather than discarding everything.
+    evidence = [
+        {"chunk_id": "c1", "content_type": "code", "reference": "src/Login.tsx", "score": 0.34},
+        {"chunk_id": "c1", "content_type": "code", "reference": "src/Login.tsx", "score": 0.34},  # dup
+        {"chunk_id": "c2", "content_type": "code", "reference": "src/Signup.tsx", "score": 0.31},
+        {"chunk_id": "c3", "content_type": "requirement", "reference": "spec.md", "score": 0.28},
+    ]
+
+    plan = _fallback_plan("add captcha on sign in", "feature", evidence)
+
+    assert plan.confidence == "low"
+    assert {f.file_path for f in plan.affected_files} == {"src/Login.tsx", "src/Signup.tsx"}
+    assert all(f.confidence == "low" for f in plan.affected_files)
+    assert {e.chunk_id for e in plan.evidence} == {"c1", "c2", "c3"}  # deduplicated
+
+
+def test_fallback_plan_with_no_evidence_stays_empty():
+    plan = _fallback_plan("add captcha on sign in", "feature", [])
+
+    assert plan.affected_files == []
+    assert plan.evidence == []
+    assert "unconfirmed leads" not in plan.summary
+
+
+def test_provider_rejected_tool_call_falls_back_instead_of_crashing():
+    # Simulates the model hallucinating a tool name outside our schema - the provider hard-rejects
+    # that with a 4xx rather than returning a normal message. The run should still resolve to a
+    # (low-confidence) plan for reviewer approval, not propagate the provider error.
+    graph = build_graph(
+        object(),
+        uuid.uuid4(),
+        InMemorySaver(),
+        agent_model=RaisingModel(responses=[]),
+        classifier=lambda text: "feature",
+        plan_generator=lambda *a: pytest.fail("should not be called"),
+    )
+    config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+
+    result = graph.invoke(_initial_state(), config)
+
+    assert result["__interrupt__"][0].value["type"] == "approval"
+    assert result["generated_plan"]["confidence"] == "low"
 
 
 def test_approve_decision_ends_run_without_further_interrupt():

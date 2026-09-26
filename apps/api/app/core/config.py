@@ -10,8 +10,8 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 1440
     frontend_origin: str = "http://localhost:3000"
 
-    groq_api_key: str = ""
-    groq_model_name: str = "openai/gpt-oss-120b"
+    gemini_api_key: str = ""
+    gemini_model_name: str = "gemini-3.5-flash-lite"
     agent_max_steps: int = 8
     agent_review_max_retries: int = 2
 
@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     max_document_size_mb: int = 20
     max_zip_files: int = 2000
     max_zip_uncompressed_mb: int = 200
+    github_import_max_download_mb: int = 50
 
     min_relevance_score: float = 0.2
 

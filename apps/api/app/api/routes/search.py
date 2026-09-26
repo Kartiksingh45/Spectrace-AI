@@ -18,7 +18,10 @@ def search(
     db: Session = Depends(get_db),
 ) -> SearchResponse:
     query_vector = embed_text(payload.query)
-    rows = search_chunks(db, project.id, query_vector, payload.content_type, payload.limit)
+    rows = search_chunks(
+        db, project.id, query_vector, payload.content_type, payload.limit,
+        query_text=payload.query, use_reranker=True,
+    )
 
     results = [
         SearchResult(

@@ -17,5 +17,4 @@ from app.models import (  # noqa: E402,F401
     agent_step,
     generated_plan,
     approval,
-    evaluation,
 )

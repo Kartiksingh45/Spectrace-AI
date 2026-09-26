@@ -58,6 +58,24 @@ def _extract_pdf_pages(content: bytes) -> list[tuple[str, int]]:
         raise DocumentParseError(f"Could not read PDF: {exc}") from exc
 
 
+def extract_requirement_text(filename: str, content: bytes) -> str:
+    """Full plain text of a requirement document (all PDF pages joined, or the decoded file),
+    independent of chunk boundaries - used for document-version diffing, not retrieval.
+    """
+    lower = filename.lower()
+
+    if lower.endswith(".pdf"):
+        return "\n\n".join(page_text for page_text, _ in _extract_pdf_pages(content))
+
+    if lower.endswith(".txt") or lower.endswith(".md"):
+        try:
+            return content.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise DocumentParseError(f"Could not decode {filename} as UTF-8: {exc}") from exc
+
+    raise DocumentParseError(f"Unsupported requirement file type: {filename}")
+
+
 def parse_requirement_file(
     filename: str, content: bytes, chunk_size: int, chunk_overlap: int
 ) -> list[ChunkCandidate]:

@@ -20,6 +20,11 @@ def get_checkpointer():
         conninfo=_to_plain_conninfo(settings.database_url),
         kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
         open=True,
+        # Managed/serverless Postgres (e.g. Neon) can silently close idle connections server-side;
+        # without a health check, checking one of those back out fails with "SSL connection has
+        # been closed unexpectedly" on first use. check_connection pings before handing one out and
+        # transparently reconnects if it's dead, instead of surfacing that as a request failure.
+        check=ConnectionPool.check_connection,
     )
     saver = PostgresSaver(pool)
     saver.setup()

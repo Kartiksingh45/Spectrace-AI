@@ -1,10 +1,12 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.agent.checkpointer import get_checkpointer
-from app.api.deps import get_agent_overrides, get_current_user, get_membership
+from app.agent.schemas import GeneratedPlan as GeneratedPlanSchema
+from app.api.deps import get_agent_overrides, get_membership, require_reviewer
 from app.api.routes.requests import _run_to_out
 from app.db.session import get_db
 from app.models.agent_run import AgentRun
@@ -24,7 +26,7 @@ def submit_decision(
     plan_id: uuid.UUID,
     payload: DecisionRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_reviewer),
     checkpointer=Depends(get_checkpointer),
     agent_overrides: dict = Depends(get_agent_overrides),
 ) -> RunOut:
@@ -39,6 +41,16 @@ def submit_decision(
     run = db.get(AgentRun, plan.run_id)
     if not run or run.status != AgentRunStatus.awaiting_approval:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This plan is not awaiting a decision")
+
+    if payload.decision == "edit_approved" and payload.final_content is not None:
+        try:
+            validated = GeneratedPlanSchema.model_validate(payload.final_content)
+        except ValidationError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid edited plan: {exc}") from exc
+        # The edit becomes the plan of record from here on (run detail, exports) - without this,
+        # "edit & approve" silently kept showing the original AI-generated text everywhere despite
+        # the reviewer's changes.
+        plan.content = validated.model_dump()
 
     db.add(
         Approval(

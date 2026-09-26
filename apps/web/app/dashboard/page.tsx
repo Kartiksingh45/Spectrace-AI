@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { TopNav } from "@/components/TopNav";
 import { api, ApiError, Project } from "@/lib/api";
 
 export default function DashboardPage() {
@@ -41,19 +42,10 @@ export default function DashboardPage() {
     }
   }
 
-  async function handleLogout() {
-    await api.logout();
-    router.push("/sign-in");
-  }
-
   return (
     <main className="mx-auto max-w-2xl px-4 py-12">
-      <div className="mb-8 flex items-center justify-between">
-        <h1 className="font-serif text-2xl font-semibold text-ink">Projects</h1>
-        <button onClick={handleLogout} className="text-sm text-ink/60 hover:text-ink">
-          Sign out
-        </button>
-      </div>
+      <TopNav />
+      <h1 className="mb-8 font-serif text-2xl font-semibold text-ink">Projects</h1>
 
       <form onSubmit={handleCreate} className="mb-8 flex gap-2">
         <input
@@ -61,7 +53,7 @@ export default function DashboardPage() {
           placeholder="New project name"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
-          className="flex-1 rounded-md border border-ink/15 bg-white px-3 py-2 text-sm outline-none focus:border-trace"
+          className="flex-1 rounded-md border border-ink/15 bg-surface px-3 py-2 text-sm outline-none focus:border-trace"
         />
         <button
           type="submit"
@@ -84,7 +76,7 @@ export default function DashboardPage() {
             <li key={project.id}>
               <Link
                 href={`/projects/${project.id}`}
-                className="block rounded-md border border-ink/10 bg-white px-4 py-3 text-sm text-ink hover:border-trace"
+                className="block rounded-md border border-ink/10 bg-surface px-4 py-3 text-sm text-ink hover:border-trace"
               >
                 {project.name}
               </Link>

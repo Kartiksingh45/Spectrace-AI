@@ -32,6 +32,7 @@ export type User = {
   id: string;
   email: string;
   role: "contributor" | "reviewer" | "administrator";
+  created_at: string;
 };
 
 export type Project = {
@@ -49,7 +50,18 @@ export type ProjectDocument = {
   filename: string;
   status: DocumentStatus;
   error: string | null;
+  duration_ms: number | null;
+  version: number;
+  previous_version_id: string | null;
   created_at: string;
+};
+
+export type DocumentDiff = {
+  from_document_id: string;
+  from_version: number;
+  to_document_id: string;
+  to_version: number;
+  diff_lines: string[];
 };
 
 export type SearchResult = {
@@ -69,6 +81,17 @@ export type ChangeRequest = {
   request_type: string | null;
   status: string;
   created_at: string;
+};
+
+export type ChangeRequestSummary = {
+  id: string;
+  request_text: string;
+  request_type: string | null;
+  status: string;
+  created_at: string;
+  latest_run_id: string | null;
+  plan_summary: string | null;
+  confidence: string | null;
 };
 
 export type RunStep = {
@@ -117,63 +140,19 @@ export type Run = {
 
 export type Decision = "approved" | "edit_approved" | "rejected" | "regenerate_requested";
 
-export type EvaluationCategory = "clear" | "cross_source" | "ambiguous" | "unsupported";
-export type EvaluationBehavior = "direct_answer" | "clarification" | "insufficient_evidence" | "failed";
-
-export type EvaluationCase = {
-  id: string;
-  title: string;
-  request_text: string;
-  category: EvaluationCategory;
-  expected_behavior: EvaluationBehavior;
-  expected_sources: string[];
-  expected_affected_files: string[];
-  created_at: string;
-};
-
-export type EvaluationCaseInput = {
-  title: string;
-  request_text: string;
-  category: EvaluationCategory;
-  expected_behavior: EvaluationBehavior;
-  expected_sources?: string[];
-  expected_affected_files?: string[];
-};
-
-export type EvaluationResult = {
-  id: string;
-  case_id: string;
-  run_id: string | null;
-  actual_behavior: EvaluationBehavior;
-  retrieved_sources: string[];
-  affected_files: string[];
-  confidence: string | null;
-  passed: boolean;
-  notes: string | null;
-  latency_ms: number;
-  created_at: string;
-};
-
-export type EvaluationReport = {
-  total_cases: number;
-  total_results: number;
-  overall_pass_rate: number | null;
-  retrieval_hit_rate: number | null;
-  affected_file_precision: number | null;
-  citation_correctness: number | null;
-  clarification_accuracy: number | null;
-  unsupported_claim_rate: number | null;
-  reviewer_acceptance: number | null;
-  median_latency_ms: number | null;
-  max_latency_ms: number | null;
-};
-
 export const api = {
+  runEventsUrl: (requestId: string) => `${API_URL}/requests/${requestId}/events`,
   register: (email: string, password: string) =>
     request<User>("/auth/register", { method: "POST", body: JSON.stringify({ email, password }) }),
   login: (email: string, password: string) =>
     request<User>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
+  getCurrentUser: () => request<User>("/auth/me"),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<void>("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    }),
   listProjects: () => request<Project[]>("/projects"),
   createProject: (name: string) =>
     request<Project>("/projects", { method: "POST", body: JSON.stringify({ name }) }),
@@ -189,8 +168,17 @@ export const api = {
     form.append("file", file);
     return request<ProjectDocument>(`/projects/${projectId}/codebases`, { method: "POST", body: form });
   },
+  importGithubRepo: (projectId: string, owner: string, repo: string, branch: string) =>
+    request<ProjectDocument>(`/projects/${projectId}/github-import`, {
+      method: "POST",
+      body: JSON.stringify({ owner, repo, branch }),
+    }),
   deleteDocument: (projectId: string, documentId: string) =>
     request<void>(`/projects/${projectId}/documents/${documentId}`, { method: "DELETE" }),
+  diffDocumentVersions: (projectId: string, documentId: string, against: string) =>
+    request<DocumentDiff>(
+      `/projects/${projectId}/documents/${documentId}/diff?against=${against}`
+    ),
   search: (projectId: string, query: string, contentType: "requirement" | "code" | "all") =>
     request<{ results: SearchResult[] }>(`/projects/${projectId}/search`, {
       method: "POST",
@@ -201,26 +189,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ request_text: requestText }),
     }),
+  listChangeRequests: (projectId: string) =>
+    request<ChangeRequestSummary[]>(`/projects/${projectId}/requests`),
   analyseRequest: (requestId: string) => request<Run>(`/requests/${requestId}/analyse`, { method: "POST" }),
   getRun: (runId: string) => request<Run>(`/runs/${runId}`),
   answerClarification: (runId: string, answer: string) =>
     request<Run>(`/runs/${runId}/clarification`, { method: "POST", body: JSON.stringify({ answer }) }),
-  submitDecision: (planId: string, decision: Decision, feedback?: string) =>
+  submitDecision: (planId: string, decision: Decision, feedback?: string, finalContent?: GeneratedPlan) =>
     request<Run>(`/plans/${planId}/decision`, {
       method: "POST",
-      body: JSON.stringify({ decision, feedback: feedback ?? null }),
+      body: JSON.stringify({ decision, feedback: feedback ?? null, final_content: finalContent ?? null }),
     }),
-  listEvaluationCases: (projectId: string) =>
-    request<EvaluationCase[]>(`/projects/${projectId}/evaluation/cases`),
-  createEvaluationCase: (projectId: string, input: EvaluationCaseInput) =>
-    request<EvaluationCase>(`/projects/${projectId}/evaluation/cases`, {
-      method: "POST",
-      body: JSON.stringify(input),
-    }),
-  deleteEvaluationCase: (projectId: string, caseId: string) =>
-    request<void>(`/projects/${projectId}/evaluation/cases/${caseId}`, { method: "DELETE" }),
-  runEvaluation: (projectId: string) =>
-    request<EvaluationResult[]>(`/projects/${projectId}/evaluation/run`, { method: "POST" }),
-  getEvaluationReport: (projectId: string) =>
-    request<EvaluationReport>(`/projects/${projectId}/evaluation/report`),
 };

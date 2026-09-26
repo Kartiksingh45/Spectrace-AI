@@ -7,6 +7,7 @@ from app.agent.checkpointer import get_checkpointer
 from app.agent.schemas import GeneratedPlan
 from app.api.deps import get_agent_overrides
 from app.main import app
+from app.models.user import User, UserRole
 
 
 class ScriptedModel(FakeMessagesListChatModel):
@@ -40,7 +41,7 @@ def agent_overrides():
     """Lets a test script the agent's tool-calling decisions; cleared after the test.
 
     IMPORTANT: a fresh scripted model is constructed on *every* HTTP request (build_graph() is
-    called anew per request, exactly like a real ChatGroq client would be) - it always starts
+    called anew per request, exactly like a real ChatGoogleGenerativeAI client would be) - it always starts
     reading its own `responses` list from index 0. So `configure(...)` must be called again,
     with just the response(s) that request's own agent turn(s) should produce, before *each*
     HTTP call that will trigger a new "agent" node invocation (not once for the whole scenario).
@@ -60,14 +61,17 @@ def agent_overrides():
     app.dependency_overrides.pop(get_agent_overrides, None)
 
 
-def _register_and_create_project(client, email="pm@example.com"):
+def _register_and_create_project(client, db_session, email="pm@example.com"):
     client.post("/auth/register", json={"email": email, "password": "hunter2pass"})
+    # Decisions require the reviewer role (test_rbac.py covers a plain contributor being refused).
+    db_session.query(User).filter(User.email == email).update({"role": UserRole.reviewer})
+    db_session.commit()
     project = client.post("/projects", json={"name": "Demo"}).json()
     return project
 
 
-def test_analyse_reaches_awaiting_approval(client, agent_overrides):
-    project = _register_and_create_project(client)
+def test_analyse_reaches_awaiting_approval(client, db_session, agent_overrides):
+    project = _register_and_create_project(client, db_session)
     agent_overrides([_tool_call("generate_plan")])
 
     change_request = client.post(
@@ -81,8 +85,8 @@ def test_analyse_reaches_awaiting_approval(client, agent_overrides):
     assert any(step["tool_name"] == "generate_plan" for step in run["steps"])
 
 
-def test_analyse_is_idempotent_while_in_flight(client, agent_overrides):
-    project = _register_and_create_project(client)
+def test_analyse_is_idempotent_while_in_flight(client, db_session, agent_overrides):
+    project = _register_and_create_project(client, db_session)
     agent_overrides([_tool_call("generate_plan")])
     change_request = client.post(
         f"/projects/{project['id']}/requests", json={"request_text": "Add mobile OTP"}
@@ -96,8 +100,8 @@ def test_analyse_is_idempotent_while_in_flight(client, agent_overrides):
     assert first["id"] == second["id"]
 
 
-def test_clarification_flow_then_approval(client, agent_overrides):
-    project = _register_and_create_project(client)
+def test_clarification_flow_then_approval(client, db_session, agent_overrides):
+    project = _register_and_create_project(client, db_session)
     agent_overrides([_tool_call("request_clarification", {"question": "When should OTP trigger?"})])
     change_request = client.post(
         f"/projects/{project['id']}/requests", json={"request_text": "Add mobile OTP"}
@@ -119,8 +123,8 @@ def test_clarification_flow_then_approval(client, agent_overrides):
     assert resp.status_code == 400
 
 
-def test_rejected_plan_is_never_marked_approved(client, agent_overrides):
-    project = _register_and_create_project(client)
+def test_rejected_plan_is_never_marked_approved(client, db_session, agent_overrides):
+    project = _register_and_create_project(client, db_session)
     agent_overrides([_tool_call("generate_plan")])
     change_request = client.post(
         f"/projects/{project['id']}/requests", json={"request_text": "Add mobile OTP"}
@@ -134,8 +138,8 @@ def test_rejected_plan_is_never_marked_approved(client, agent_overrides):
     assert resp.status_code == 400
 
 
-def test_regenerate_produces_new_plan_version(client, agent_overrides):
-    project = _register_and_create_project(client)
+def test_regenerate_produces_new_plan_version(client, db_session, agent_overrides):
+    project = _register_and_create_project(client, db_session)
     calls = {"n": 0}
 
     def plan_generator(request_text, request_type, evidence, feedback):
@@ -160,8 +164,47 @@ def test_regenerate_produces_new_plan_version(client, agent_overrides):
     assert run["generated_plan"]["confidence"] == "high"
 
 
-def test_second_user_cannot_see_or_analyse_first_users_request(client, agent_overrides):
-    project = _register_and_create_project(client, email="owner@example.com")
+def test_edit_approved_persists_final_content_as_the_plan_of_record(client, db_session, agent_overrides):
+    project = _register_and_create_project(client, db_session)
+    agent_overrides([_tool_call("generate_plan")])
+    change_request = client.post(
+        f"/projects/{project['id']}/requests", json={"request_text": "Add mobile OTP"}
+    ).json()
+    run = client.post(f"/requests/{change_request['id']}/analyse").json()
+
+    edited = _plan(summary="Reviewer-rewritten summary", confidence="high").model_dump()
+    run = client.post(
+        f"/plans/{run['plan_id']}/decision",
+        json={"decision": "edit_approved", "final_content": edited},
+    ).json()
+
+    assert run["status"] == "completed"
+    assert run["generated_plan"]["summary"] == "Reviewer-rewritten summary"
+    assert run["generated_plan"]["confidence"] == "high"
+
+    # The edit sticks around as the plan of record on later reads of the same run, not just in
+    # the immediate response.
+    refetched = client.get(f"/runs/{run['id']}").json()
+    assert refetched["generated_plan"]["summary"] == "Reviewer-rewritten summary"
+
+
+def test_edit_approved_with_invalid_final_content_is_rejected(client, db_session, agent_overrides):
+    project = _register_and_create_project(client, db_session)
+    agent_overrides([_tool_call("generate_plan")])
+    change_request = client.post(
+        f"/projects/{project['id']}/requests", json={"request_text": "Add mobile OTP"}
+    ).json()
+    run = client.post(f"/requests/{change_request['id']}/analyse").json()
+
+    resp = client.post(
+        f"/plans/{run['plan_id']}/decision",
+        json={"decision": "edit_approved", "final_content": {"summary": "missing required fields"}},
+    )
+    assert resp.status_code == 400
+
+
+def test_second_user_cannot_see_or_analyse_first_users_request(client, db_session, agent_overrides):
+    project = _register_and_create_project(client, db_session, email="owner@example.com")
     agent_overrides([_tool_call("generate_plan")])
     change_request = client.post(
         f"/projects/{project['id']}/requests", json={"request_text": "Add mobile OTP"}
@@ -170,4 +213,35 @@ def test_second_user_cannot_see_or_analyse_first_users_request(client, agent_ove
 
     client.post("/auth/register", json={"email": "intruder@example.com", "password": "hunter2pass"})
     resp = client.post(f"/requests/{change_request['id']}/analyse")
+    assert resp.status_code == 404
+
+
+def test_list_change_requests_includes_latest_run_and_plan_summary(client, db_session, agent_overrides):
+    project = _register_and_create_project(client, db_session)
+    agent_overrides([_tool_call("generate_plan")])
+    change_request = client.post(
+        f"/projects/{project['id']}/requests", json={"request_text": "Add mobile OTP"}
+    ).json()
+    run = client.post(f"/requests/{change_request['id']}/analyse").json()
+
+    listed = client.get(f"/projects/{project['id']}/requests").json()
+
+    assert len(listed) == 1
+    entry = listed[0]
+    assert entry["id"] == change_request["id"]
+    assert entry["latest_run_id"] == run["id"]
+    assert entry["plan_summary"] == "summary"
+    assert entry["confidence"] == "low"
+    assert entry["status"] == "awaiting_approval"
+
+
+def test_list_change_requests_is_project_scoped(client, db_session, agent_overrides):
+    project_a = _register_and_create_project(client, db_session, email="a@example.com")
+    client.post(f"/projects/{project_a['id']}/requests", json={"request_text": "Add mobile OTP"})
+    client.post("/auth/logout")
+
+    project_b = _register_and_create_project(client, db_session, email="b@example.com")
+    assert client.get(f"/projects/{project_b['id']}/requests").json() == []
+
+    resp = client.get(f"/projects/{project_a['id']}/requests")
     assert resp.status_code == 404

@@ -1,7 +1,8 @@
-"""Real Groq-backed LLM calls used by the agent graph.
+"""Real Gemini-backed LLM calls used by the agent graph.
 
 Kept as small, independently injectable functions (rather than methods on the graph) so tests can
-substitute deterministic stubs without needing to fake ChatGroq's tool-calling wire format.
+substitute deterministic stubs without needing to fake ChatGoogleGenerativeAI's tool-calling wire
+format.
 """
 from typing import Literal
 
@@ -28,16 +29,16 @@ request. You may cite ONLY evidence chunk_ids and file paths that appear in the 
 well the evidence actually supports the plan."""
 
 
-def _get_groq_model():
-    from langchain_groq import ChatGroq
+def _get_llm_model():
+    from langchain_google_genai import ChatGoogleGenerativeAI
 
-    return ChatGroq(model=settings.groq_model_name, api_key=settings.groq_api_key, temperature=0)
+    return ChatGoogleGenerativeAI(model=settings.gemini_model_name, google_api_key=settings.gemini_api_key, temperature=0)
 
 
 def classify_request(request_text: str) -> str:
     from langchain_core.messages import HumanMessage, SystemMessage
 
-    model = _get_groq_model().with_structured_output(ClassifyResult)
+    model = _get_llm_model().with_structured_output(ClassifyResult)
     result = model.invoke([SystemMessage(CLASSIFY_PROMPT), HumanMessage(request_text)])
     return result.request_type
 
@@ -56,7 +57,7 @@ def generate_plan_with_llm(
 ) -> GeneratedPlan:
     from langchain_core.messages import HumanMessage, SystemMessage
 
-    model = _get_groq_model().with_structured_output(GeneratedPlan)
+    model = _get_llm_model().with_structured_output(GeneratedPlan)
     prompt = (
         f"Request: {request_text}\n"
         f"Request type: {request_type or 'unknown'}\n\n"

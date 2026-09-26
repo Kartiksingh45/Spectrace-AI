@@ -43,7 +43,9 @@ def build_tools(
     @tool
     def search_requirements(query: str, tool_call_id: Annotated[str, InjectedToolCallId]) -> Command:
         """Search uploaded requirement documents for text relevant to the query."""
-        rows = search_chunks(db, project_id, embed_text(query), "requirement", limit=5)
+        rows = search_chunks(
+            db, project_id, embed_text(query), "requirement", limit=5, query_text=query, use_reranker=True
+        )
         evidence = [_evidence_item(chunk, filename, score) for chunk, filename, score in rows]
         return Command(
             update={
@@ -57,7 +59,9 @@ def build_tools(
     @tool
     def search_codebase(query: str, tool_call_id: Annotated[str, InjectedToolCallId]) -> Command:
         """Search the indexed codebase for functions/classes relevant to the query."""
-        rows = search_chunks(db, project_id, embed_text(query), "code", limit=5)
+        rows = search_chunks(
+            db, project_id, embed_text(query), "code", limit=5, query_text=query, use_reranker=True
+        )
         evidence = [_evidence_item(chunk, filename, score) for chunk, filename, score in rows]
         return Command(
             update={

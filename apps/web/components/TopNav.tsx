@@ -1,0 +1,71 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
+import { clearLastProjectId } from "@/lib/lastProject";
+import { applyTheme, getStoredThemePreference, setStoredThemePreference, type ThemePreference } from "@/lib/theme";
+
+const THEME_CYCLE: ThemePreference[] = ["system", "light", "dark"];
+const THEME_LABEL: Record<ThemePreference, string> = {
+  system: "Theme: Auto",
+  light: "Theme: Light",
+  dark: "Theme: Dark",
+};
+
+function ThemeToggle() {
+  const [pref, setPref] = useState<ThemePreference>("system");
+
+  useEffect(() => {
+    setPref(getStoredThemePreference());
+  }, []);
+
+  function cycleTheme() {
+    const next = THEME_CYCLE[(THEME_CYCLE.indexOf(pref) + 1) % THEME_CYCLE.length];
+    setPref(next);
+    setStoredThemePreference(next);
+    applyTheme(next);
+  }
+
+  return (
+    <button onClick={cycleTheme} className="text-ink/60 hover:text-ink">
+      {THEME_LABEL[pref]}
+    </button>
+  );
+}
+
+export function TopNav() {
+  const router = useRouter();
+
+  async function handleSignOut() {
+    clearLastProjectId();
+    await api.logout();
+    router.push("/sign-in");
+  }
+
+  return (
+    <nav className="mb-8 flex items-center justify-between border-b border-ink/10 pb-4 text-sm">
+      <div className="flex items-center gap-5">
+        <Link href="/dashboard" className="font-serif text-base font-semibold text-ink">
+          Spectrace AI
+        </Link>
+        <Link href="/dashboard" className="text-ink/60 hover:text-ink">
+          Projects
+        </Link>
+        <Link href="/guide" className="text-ink/60 hover:text-ink">
+          Guide
+        </Link>
+        <Link href="/profile" className="text-ink/60 hover:text-ink">
+          My Profile
+        </Link>
+      </div>
+      <div className="flex items-center gap-5">
+        <ThemeToggle />
+        <button onClick={handleSignOut} className="text-ink/60 hover:text-ink">
+          Sign out
+        </button>
+      </div>
+    </nav>
+  );
+}

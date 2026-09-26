@@ -22,12 +22,24 @@ class ChangeRequestOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ChangeRequestSummaryOut(BaseModel):
+    id: uuid.UUID
+    request_text: str
+    request_type: RequestType | None
+    status: ChangeRequestStatus
+    created_at: datetime
+    latest_run_id: uuid.UUID | None
+    plan_summary: str | None
+    confidence: str | None
+
+
 class StepOut(BaseModel):
     step_index: int
     tool_name: str | None
     input_summary: str
     output_summary: str
     status: str
+    duration_ms: int | None
 
     model_config = {"from_attributes": True}
 
@@ -40,6 +52,9 @@ class RunOut(BaseModel):
     pending_question: str | None
     generated_plan: dict[str, Any] | None
     plan_id: uuid.UUID | None
+    started_at: datetime
+    ended_at: datetime | None
+    duration_ms: int | None
 
 
 class ClarificationAnswer(BaseModel):

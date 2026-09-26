@@ -7,7 +7,7 @@ from app.core.security import COOKIE_NAME, decode_access_token
 from app.db.session import get_db
 from app.models.project import Project
 from app.models.project_member import ProjectMember
-from app.models.user import User
+from app.models.user import User, UserRole
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
@@ -30,6 +30,23 @@ def get_membership(db: Session, project_id: uuid.UUID, user_id: uuid.UUID) -> Pr
     )
 
 
+def require_reviewer(user: User = Depends(get_current_user)) -> User:
+    """Only a reviewer or administrator may approve, edit-approve, reject, or request
+    regeneration of a plan - a contributor can submit requests but not decide on them."""
+    if user.role not in (UserRole.reviewer, UserRole.administrator):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only a reviewer or administrator can decide on a plan",
+        )
+    return user
+
+
+def require_administrator(user: User = Depends(get_current_user)) -> User:
+    if user.role != UserRole.administrator:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator role required")
+    return user
+
+
 def require_project_member(
     project_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> Project:
@@ -43,7 +60,7 @@ def require_project_member(
 def get_agent_overrides() -> dict:
     """Extra kwargs forwarded to build_graph() (agent_model/classifier/plan_generator).
 
-    Empty by default (real Groq is used); tests override this dependency to inject a scripted
+    Empty by default (the real Gemini model is used); tests override this dependency to inject a scripted
     fake model so the agent's tool-selection loop is deterministic and offline.
     """
     return {}

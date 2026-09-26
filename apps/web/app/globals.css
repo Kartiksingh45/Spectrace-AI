@@ -2,7 +2,35 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --color-background: 229 231 235; /* #E5E7EB - light grey */
+  --color-ink: 27 31 39; /* #1B1F27 */
+  --color-accent: 22 49 80; /* #163150 */
+  --color-trace: 14 124 126; /* #0E7C7E */
+  --color-surface: 255 255 255; /* white card/input backgrounds */
+}
+
+.dark {
+  --color-background: 20 30 48; /* #141E30 - dark blue */
+  --color-ink: 226 229 235; /* #E2E5EB - off-white, not pure white */
+  --color-accent: 62 111 166; /* #3E6FA6 - brightened so buttons still pop on a dark page */
+  --color-trace: 45 191 186; /* #2DBFBA - brightened teal for dark-background contrast */
+  --color-surface: 26 30 38; /* #1A1E26 - card/input background, one step above the page bg */
+}
+
 body {
-  background-color: #f6f4ee;
-  color: #1b1f27;
+  background-color: rgb(var(--color-background));
+  color: rgb(var(--color-ink));
+}
+
+@keyframes auth-gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.auth-background {
+  background: linear-gradient(120deg, #0b1220, #163150, #0e3d3f, #0b1220);
+  background-size: 300% 300%;
+  animation: auth-gradient-shift 18s ease infinite;
 }

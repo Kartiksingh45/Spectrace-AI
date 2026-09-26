@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "spectrace-web",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  }
+  // NEXT_PUBLIC_API_URL is NOT set here - Next.js inlines NEXT_PUBLIC_* vars into the client
+  // bundle at BUILD time, so it must be set in the shell (or apps/web/.env.production) before
+  // running `npm run deploy`, not as a Workers runtime var. See README "Deployment" section.
+}

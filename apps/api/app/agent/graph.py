@@ -5,21 +5,25 @@ is enforced deterministically in `review` (not trusted to the model's judgement)
 chunk_id and affected-file path the model cites in its plan must have actually been returned by a
 search tool during this run.
 """
+import logging
 import uuid
 from typing import Any, Callable
 
+from google.genai.errors import ClientError as GeminiClientError
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 from langgraph.types import interrupt
 from sqlalchemy.orm import Session
 
 from app.agent.llm import classify_request, generate_plan_with_llm
-from app.agent.schemas import GeneratedPlan
-from app.agent.state import AgentState
+from app.agent.schemas import AffectedFile, EvidenceRef, GeneratedPlan
+from app.agent.state import AgentState, EvidenceItem
 from app.agent.tools import build_tools
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 AGENT_SYSTEM_PROMPT = """You are Spectrace AI's change-impact analysis agent. A request has been \
 classified as: {request_type}.
@@ -53,13 +57,49 @@ def _grounding_errors(plan: dict[str, Any], evidence: list[dict[str, Any]]) -> l
     return errors
 
 
-def _fallback_plan(request_text: str, request_type: str | None) -> GeneratedPlan:
+def _fallback_plan(
+    request_text: str, request_type: str | None, evidence: list[EvidenceItem]
+) -> GeneratedPlan:
+    """Built when the agent never reached a reviewer-ready plan (ran out of steps, or repeatedly
+    failed grounding). Still surfaces whatever the search tools actually turned up during the run
+    - even weak, unconfirmed leads - as low-confidence candidates, rather than discarding real
+    search results just because the model didn't commit to a full plan around them. For a user
+    whose whole goal is "where do I even start looking in this codebase", an unconfirmed lead is
+    far more useful than nothing.
+    """
+    seen_chunks: set[str] = set()
+    evidence_refs: list[EvidenceRef] = []
+    seen_files: set[str] = set()
+    affected_files: list[AffectedFile] = []
+    for item in evidence:
+        if item["chunk_id"] not in seen_chunks:
+            seen_chunks.add(item["chunk_id"])
+            evidence_refs.append(
+                EvidenceRef(
+                    chunk_id=item["chunk_id"],
+                    note=f"Turned up during search (score {item['score']:.2f}) - relevance not confirmed.",
+                )
+            )
+        if item["content_type"] == "code" and item["reference"] not in seen_files:
+            seen_files.add(item["reference"])
+            affected_files.append(
+                AffectedFile(
+                    file_path=item["reference"],
+                    reason="Surfaced by search for this request; the agent could not confirm direct relevance - review manually.",
+                    confidence="low",
+                )
+            )
+
+    summary = f"Insufficient evidence was found to responsibly analyse: {request_text}"
+    if affected_files or evidence_refs:
+        summary += " A few unconfirmed leads turned up during search - see affected files and evidence below."
+
     return GeneratedPlan(
-        summary=f"Insufficient evidence was found to responsibly analyse: {request_text}",
+        summary=summary,
         request_type=request_type or "feature",
         questions=[],
-        evidence=[],
-        affected_files=[],
+        evidence=evidence_refs,
+        affected_files=affected_files,
         user_story="Not enough grounded evidence was available to propose a user story.",
         acceptance_criteria=[],
         tasks=[],
@@ -82,9 +122,11 @@ def build_graph(
     plan_generator = plan_generator or generate_plan_with_llm
 
     if agent_model is None:
-        from langchain_groq import ChatGroq
+        from langchain_google_genai import ChatGoogleGenerativeAI
 
-        agent_model = ChatGroq(model=settings.groq_model_name, api_key=settings.groq_api_key, temperature=0)
+        agent_model = ChatGoogleGenerativeAI(
+            model=settings.gemini_model_name, google_api_key=settings.gemini_api_key, temperature=0
+        )
 
     tools = build_tools(db, project_id, plan_generator)
     model_with_tools = agent_model.bind_tools(tools)
@@ -118,11 +160,24 @@ def build_graph(
                 budget_instruction=budget_instruction,
             )
         )
+        def invoke(messages: list) -> AIMessage:
+            try:
+                return model_with_tools.invoke(messages)
+            except GeminiClientError as exc:
+                # The model can occasionally emit a tool call outside the schema we gave it (e.g. a
+                # hallucinated tool name); the provider hard-rejects that server-side with a 4xx
+                # instead of returning a normal message. Treat it as "no valid tool call this turn"
+                # rather than crashing the whole run - route_after_agent falls through to
+                # insufficient_evidence, which still surfaces whatever real evidence was gathered
+                # earlier in the run.
+                logger.warning("Model tool call rejected by provider, treating as no tool call: %s", exc)
+                return AIMessage(content="(The model's last response could not be used.)")
+
         if not state["messages"]:
             first = HumanMessage(state["request_text"])
-            response = model_with_tools.invoke([system, first])
+            response = invoke([system, first])
             return {"messages": [first, response], "step_count": state.get("step_count", 0) + 1}
-        response = model_with_tools.invoke([system] + state["messages"])
+        response = invoke([system] + state["messages"])
         return {"messages": [response], "step_count": state.get("step_count", 0) + 1}
 
     def review_node(state: AgentState) -> dict:
@@ -136,7 +191,7 @@ def build_graph(
         return {"messages": [correction], "review_retries": retries, "generated_plan_valid": False}
 
     def insufficient_evidence_node(state: AgentState) -> dict:
-        plan = _fallback_plan(state["request_text"], state.get("request_type"))
+        plan = _fallback_plan(state["request_text"], state.get("request_type"), state.get("evidence", []))
         return {"generated_plan": plan.model_dump(), "generated_plan_valid": True}
 
     def await_approval_node(state: AgentState) -> dict:

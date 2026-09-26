@@ -13,9 +13,26 @@ class DocumentOut(BaseModel):
     filename: str
     status: DocumentStatus
     error: str | None
+    duration_ms: int | None
+    version: int
+    previous_version_id: uuid.UUID | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class GithubImportRequest(BaseModel):
+    owner: str = Field(min_length=1, max_length=100)
+    repo: str = Field(min_length=1, max_length=100)
+    branch: str = Field(default="main", min_length=1, max_length=200)
+
+
+class DocumentDiffOut(BaseModel):
+    from_document_id: uuid.UUID
+    from_version: int
+    to_document_id: uuid.UUID
+    to_version: int
+    diff_lines: list[str]
 
 
 class SearchRequest(BaseModel):

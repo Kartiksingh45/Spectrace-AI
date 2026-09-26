@@ -21,7 +21,8 @@ def _set_session_cookie(response: Response, user_id: str) -> None:
         key=COOKIE_NAME,
         value=token,
         httponly=True,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
+        secure=settings.cookie_secure,
         max_age=COOKIE_MAX_AGE_SECONDS,
         path="/",
     )
@@ -54,7 +55,9 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(response: Response) -> None:
-    response.delete_cookie(COOKIE_NAME, path="/")
+    response.delete_cookie(
+        COOKIE_NAME, path="/", samesite=settings.cookie_samesite, secure=settings.cookie_secure
+    )
 
 
 @router.get("/me", response_model=UserOut)

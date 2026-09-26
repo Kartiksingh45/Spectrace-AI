@@ -9,6 +9,12 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440
     frontend_origin: str = "http://localhost:3000"
+    # Local dev: frontend/API are on the same site (different localhost ports), so "lax" +
+    # insecure works over plain http. A cross-site deployment (different registrable domains,
+    # e.g. Cloudflare Pages + Render) needs "none" + secure=True, or the browser silently drops
+    # the session cookie on every cross-origin request after login.
+    cookie_samesite: str = "lax"
+    cookie_secure: bool = False
 
     gemini_api_key: str = ""
     gemini_model_name: str = "gemini-3.5-flash-lite"

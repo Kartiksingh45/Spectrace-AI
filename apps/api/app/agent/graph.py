@@ -125,7 +125,10 @@ def build_graph(
         from langchain_google_genai import ChatGoogleGenerativeAI
 
         agent_model = ChatGoogleGenerativeAI(
-            model=settings.gemini_model_name, google_api_key=settings.gemini_api_key, temperature=0
+            model=settings.gemini_model_name,
+            google_api_key=settings.gemini_api_key,
+            temperature=0,
+            timeout=settings.gemini_request_timeout_seconds,
         )
 
     tools = build_tools(db, project_id, plan_generator)

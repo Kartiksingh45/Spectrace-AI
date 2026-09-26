@@ -32,7 +32,12 @@ well the evidence actually supports the plan."""
 def _get_llm_model():
     from langchain_google_genai import ChatGoogleGenerativeAI
 
-    return ChatGoogleGenerativeAI(model=settings.gemini_model_name, google_api_key=settings.gemini_api_key, temperature=0)
+    return ChatGoogleGenerativeAI(
+        model=settings.gemini_model_name,
+        google_api_key=settings.gemini_api_key,
+        temperature=0,
+        timeout=settings.gemini_request_timeout_seconds,
+    )
 
 
 def classify_request(request_text: str) -> str:

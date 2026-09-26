@@ -18,6 +18,11 @@ class Settings(BaseSettings):
 
     gemini_api_key: str = ""
     gemini_model_name: str = "gemini-3.5-flash-lite"
+    # Without an explicit timeout a hung network call (observed in production - two independent
+    # runs each stuck indefinitely on the agent's tool-calling call, past classify) blocks forever
+    # with no ceiling, orphaning the run at "running" - a background task that raises is at least
+    # caught by _invoke_and_sync and marks the run "failed" instead of stuck forever.
+    gemini_request_timeout_seconds: int = 30
     agent_max_steps: int = 8
     agent_review_max_retries: int = 2
 

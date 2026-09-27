@@ -28,6 +28,40 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Same contract as request(), but for a large FormData body where the caller wants live upload
+ * progress - plain fetch() has no upload-progress event, so this uses XMLHttpRequest instead. */
+function requestWithProgress<T>(
+  path: string,
+  body: FormData,
+  onProgress?: (percent: number) => void
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_URL}${path}`);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (e) => {
+      if (onProgress && e.lengthComputable) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(xhr.status === 204 ? (undefined as T) : (JSON.parse(xhr.responseText) as T));
+        return;
+      }
+      let detail = xhr.statusText;
+      try {
+        detail = JSON.parse(xhr.responseText).detail ?? detail;
+      } catch {
+        // response wasn't JSON - fall back to statusText
+      }
+      reject(new ApiError(xhr.status, detail || "Request failed"));
+    };
+    xhr.onerror = () => reject(new ApiError(0, "Network error"));
+    xhr.send(body);
+  });
+}
+
 export type User = {
   id: string;
   email: string;
@@ -164,10 +198,10 @@ export const api = {
     form.append("file", file);
     return request<ProjectDocument>(`/projects/${projectId}/documents`, { method: "POST", body: form });
   },
-  uploadCodebase: (projectId: string, file: File) => {
+  uploadCodebase: (projectId: string, file: File, onProgress?: (percent: number) => void) => {
     const form = new FormData();
     form.append("file", file);
-    return request<ProjectDocument>(`/projects/${projectId}/codebases`, { method: "POST", body: form });
+    return requestWithProgress<ProjectDocument>(`/projects/${projectId}/codebases`, form, onProgress);
   },
   importGithubRepo: (projectId: string, owner: string, repo: string, branch: string) =>
     request<ProjectDocument>(`/projects/${projectId}/github-import`, {

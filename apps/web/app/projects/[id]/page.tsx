@@ -86,7 +86,10 @@ type PathedFile = { path: string; file: File };
 /** Builds a codebase zip from a folder's worth of files, dropping ignored directories and
  * non-source files first so a whole project (node_modules included) doesn't blow past the
  * backend's entry-count safety cap. Returns null if nothing source-relevant survived the filter. */
-async function buildCodebaseZip(entries: PathedFile[]): Promise<File | null> {
+async function buildCodebaseZip(
+  entries: PathedFile[],
+  onProgress?: (percent: number) => void
+): Promise<File | null> {
   const relevant = entries.filter(({ path }) => !isIgnoredPath(path) && isAllowedSourceFile(path));
   if (relevant.length === 0) return null;
 
@@ -94,7 +97,9 @@ async function buildCodebaseZip(entries: PathedFile[]): Promise<File | null> {
   for (const { path, file } of relevant) {
     zip.file(path, file);
   }
-  const blob = await zip.generateAsync({ type: "blob" });
+  const blob = await zip.generateAsync({ type: "blob" }, (metadata) => {
+    onProgress?.(Math.round(metadata.percent));
+  });
   const topLevelName = relevant[0].path.split("/")[0] || "codebase";
   return new File([blob], `${topLevelName}.zip`, { type: "application/zip" });
 }
@@ -104,7 +109,7 @@ async function buildCodebaseZip(entries: PathedFile[]): Promise<File | null> {
  * from loose files - those commonly include node_modules/.git/build output too, and previously
  * went straight to the backend unfiltered, hitting the same entry-count cap. Returns the original
  * file unchanged if it's already small enough to not need filtering. */
-async function filterExistingZip(file: File): Promise<File | null> {
+async function filterExistingZip(file: File, onProgress?: (percent: number) => void): Promise<File | null> {
   const zip = await JSZip.loadAsync(file);
   const entries = Object.values(zip.files).filter((entry) => !entry.dir);
   if (entries.length <= 2000) return file;
@@ -113,10 +118,16 @@ async function filterExistingZip(file: File): Promise<File | null> {
   if (relevant.length === 0) return null;
 
   const filtered = new JSZip();
-  for (const entry of relevant) {
+  for (const [i, entry] of relevant.entries()) {
     filtered.file(entry.name, await entry.async("blob"));
+    // Reading each entry back out of the original zip is its own slow pass over potentially
+    // thousands of files - counts for the first half of the bar, generateAsync's own progress
+    // (re-compressing the filtered set) fills the second half.
+    onProgress?.(Math.round(((i + 1) / relevant.length) * 50));
   }
-  const blob = await filtered.generateAsync({ type: "blob" });
+  const blob = await filtered.generateAsync({ type: "blob" }, (metadata) => {
+    onProgress?.(50 + Math.round(metadata.percent / 2));
+  });
   return new File([blob], file.name, { type: "application/zip" });
 }
 
@@ -183,6 +194,9 @@ export default function ProjectWorkspacePage() {
   const [uploadingDrop, setUploadingDrop] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ phase: "zipping" | "uploading"; percent: number } | null>(
+    null
+  );
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [githubOwner, setGithubOwner] = useState("");
   const [githubRepo, setGithubRepo] = useState("");
@@ -284,19 +298,22 @@ export default function ProjectWorkspacePage() {
     if (!file) return;
     setUploadingZip(true);
     setUploadError(null);
+    setUploadProgress({ phase: "zipping", percent: 0 });
     try {
-      const filtered = await filterExistingZip(file);
+      const filtered = await filterExistingZip(file, (percent) => setUploadProgress({ phase: "zipping", percent }));
       if (!filtered) {
         setUploadError("No supported source files (.py/.js/.jsx/.ts/.tsx) found outside ignored folders like node_modules.");
         return;
       }
-      await api.uploadCodebase(projectId, filtered);
+      setUploadProgress({ phase: "uploading", percent: 0 });
+      await api.uploadCodebase(projectId, filtered, (percent) => setUploadProgress({ phase: "uploading", percent }));
       if (zipInputRef.current) zipInputRef.current.value = "";
       await loadAll();
     } catch (err) {
       setUploadError(describeError(err, "Could not upload that codebase archive."));
     } finally {
       setUploadingZip(false);
+      setUploadProgress(null);
     }
   }
 
@@ -305,23 +322,26 @@ export default function ProjectWorkspacePage() {
     if (files.length === 0) return;
     setUploadingFolder(true);
     setUploadError(null);
+    setUploadProgress({ phase: "zipping", percent: 0 });
     try {
       const entries = files.map((file) => ({
         path: (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name,
         file,
       }));
-      const zipFile = await buildCodebaseZip(entries);
+      const zipFile = await buildCodebaseZip(entries, (percent) => setUploadProgress({ phase: "zipping", percent }));
       if (!zipFile) {
         setUploadError("No supported source files (.py/.js/.jsx/.ts/.tsx) found outside ignored folders like node_modules.");
         return;
       }
 
-      await api.uploadCodebase(projectId, zipFile);
+      setUploadProgress({ phase: "uploading", percent: 0 });
+      await api.uploadCodebase(projectId, zipFile, (percent) => setUploadProgress({ phase: "uploading", percent }));
       await loadAll();
     } catch (err) {
       setUploadError(describeError(err, "Could not upload that codebase folder."));
     } finally {
       setUploadingFolder(false);
+      setUploadProgress(null);
       if (folderInputRef.current) folderInputRef.current.value = "";
     }
   }
@@ -335,31 +355,38 @@ export default function ProjectWorkspacePage() {
     setUploadingDrop(true);
     try {
       if (entries.length === 1 && isZipFile(entries[0].file.name)) {
-        const filtered = await filterExistingZip(entries[0].file);
+        setUploadProgress({ phase: "zipping", percent: 0 });
+        const filtered = await filterExistingZip(entries[0].file, (percent) =>
+          setUploadProgress({ phase: "zipping", percent })
+        );
         if (!filtered) {
           setUploadError(
             "No supported source files (.py/.js/.jsx/.ts/.tsx) found outside ignored folders like node_modules."
           );
           return;
         }
-        await api.uploadCodebase(projectId, filtered);
+        setUploadProgress({ phase: "uploading", percent: 0 });
+        await api.uploadCodebase(projectId, filtered, (percent) => setUploadProgress({ phase: "uploading", percent }));
       } else if (entries.length === 1 && isDocFile(entries[0].file.name)) {
         await api.uploadDocument(projectId, entries[0].file);
       } else {
-        const zipFile = await buildCodebaseZip(entries);
+        setUploadProgress({ phase: "zipping", percent: 0 });
+        const zipFile = await buildCodebaseZip(entries, (percent) => setUploadProgress({ phase: "zipping", percent }));
         if (!zipFile) {
           setUploadError(
             "No supported source files (.py/.js/.jsx/.ts/.tsx) found outside ignored folders like node_modules."
           );
           return;
         }
-        await api.uploadCodebase(projectId, zipFile);
+        setUploadProgress({ phase: "uploading", percent: 0 });
+        await api.uploadCodebase(projectId, zipFile, (percent) => setUploadProgress({ phase: "uploading", percent }));
       }
       await loadAll();
     } catch (err) {
       setUploadError(describeError(err, "Could not upload that."));
     } finally {
       setUploadingDrop(false);
+      setUploadProgress(null);
     }
   }
 
@@ -584,6 +611,20 @@ export default function ProjectWorkspacePage() {
             or copy a file in your file explorer and paste it (Ctrl+V) anywhere on this page
           </p>
         </div>
+        {uploadProgress && (
+          <div className="mt-3">
+            <div className="mb-1 flex items-center justify-between text-xs text-ink/60">
+              <span>{uploadProgress.phase === "zipping" ? "Zipping files…" : "Uploading…"}</span>
+              <span>{uploadProgress.percent}%</span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-ink/10">
+              <div
+                className="h-full rounded-full bg-accent transition-[width] duration-150"
+                style={{ width: `${uploadProgress.percent}%` }}
+              />
+            </div>
+          </div>
+        )}
         {uploadError && <p className="mt-2 text-sm text-red-700">{uploadError}</p>}
       </section>
 

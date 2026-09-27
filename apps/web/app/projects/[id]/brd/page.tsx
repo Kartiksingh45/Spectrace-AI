@@ -230,7 +230,10 @@ export default function BrdGeneratorPage() {
       setHistory(docs);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        router.push("/sign-in");
+        // A signed-out visitor can still see and fill out this form - only actually generating
+        // (below) requires signing in, so this just leaves history empty rather than bouncing
+        // them away before they've done anything.
+        setHistory([]);
       } else {
         setLoadError("Could not load previous BRDs.");
       }
@@ -268,6 +271,13 @@ export default function BrdGeneratorPage() {
       setCurrent(doc);
       setHistory((prev) => [doc, ...(prev ?? [])]);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        // The real gate: trying to actually generate is what requires an account, not viewing
+        // the form. replace(), not push(), so the back button from sign-in returns straight to
+        // this page rather than to a redirect that immediately bounces forward again.
+        router.replace("/sign-in");
+        return;
+      }
       setGenerateError(err instanceof ApiError ? err.message : "Could not generate a BRD right now.");
     } finally {
       setGenerating(false);

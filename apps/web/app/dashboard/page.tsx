@@ -139,6 +139,7 @@ function DashboardContent() {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [signedOut, setSignedOut] = useState(false);
 
   // The home page's "+ Create a project" quick action links here with ?create=1 so the form is
   // already open instead of landing on a plain list with no obvious next step.
@@ -155,7 +156,11 @@ function DashboardContent() {
       .then(setProjects)
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) {
-          router.push("/sign-in");
+          // Browsable without an account - only actually creating a project (below) requires
+          // signing in, so this just shows an empty, signed-out-aware state instead of bouncing
+          // the visitor away before they've tried to do anything.
+          setSignedOut(true);
+          setProjects([]);
         } else {
           setError("Could not load projects.");
         }
@@ -185,7 +190,14 @@ function DashboardContent() {
       setProjects((prev) => [project, ...(prev ?? [])]);
       setNewName("");
       setShowCreateForm(false);
-    } catch {
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        // The real gate: trying to actually create is what requires an account. replace(), not
+        // push(), so the back button from sign-in returns straight here instead of to a redirect
+        // that would otherwise just bounce forward again.
+        router.replace("/sign-in");
+        return;
+      }
       setError("Could not create the project.");
     } finally {
       setCreating(false);
@@ -258,6 +270,13 @@ function DashboardContent() {
 
       {projects === null ? (
         <p className="text-sm text-ink/60">Loading…</p>
+      ) : signedOut ? (
+        <p className="text-sm text-ink/60">
+          <Link href="/sign-in" className="text-trace hover:underline">
+            Sign in
+          </Link>{" "}
+          to see or create your projects.
+        </p>
       ) : projects.length === 0 ? (
         <p className="text-sm text-ink/60">No projects yet. Create your first one above.</p>
       ) : filtered.length === 0 ? (

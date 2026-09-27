@@ -232,7 +232,7 @@ export default function ProjectWorkspacePage() {
       setLastProjectId(projectId);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        router.push("/sign-in");
+        router.replace("/sign-in");
       } else {
         setLoadError("Could not load this project.");
       }

@@ -1,9 +1,4 @@
-"use client";
-
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 import { TopNav } from "@/components/TopNav";
-import { api, ApiError } from "@/lib/api";
 
 type Step = { title: string; body: string; points?: string[] };
 
@@ -112,26 +107,8 @@ const STEPS: Step[] = [
 ];
 
 export default function GuidePage() {
-  const router = useRouter();
-  const [checkingAuth, setCheckingAuth] = useState(true);
-
-  useEffect(() => {
-    api.getCurrentUser().catch((err) => {
-      if (err instanceof ApiError && err.status === 401) {
-        router.push("/sign-in");
-      }
-    }).finally(() => setCheckingAuth(false));
-  }, [router]);
-
-  if (checkingAuth) {
-    return (
-      <main className="mx-auto max-w-5xl px-4 py-12">
-        <TopNav />
-        <p className="text-sm text-ink/60">Loading…</p>
-      </main>
-    );
-  }
-
+  // Purely informational content - browsable without an account, unlike the interactive pages
+  // (creating a project, generating a BRD) which gate on the actual action instead.
   return (
     <main className="mx-auto max-w-5xl px-4 py-12">
       <TopNav />

@@ -5,6 +5,13 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_membership
 from app.db.session import get_db
+from app.models.agent_run import AgentRun
+from app.models.agent_step import AgentStep
+from app.models.approval import Approval
+from app.models.change_request import ChangeRequest
+from app.models.content_chunk import ContentChunk
+from app.models.document import Document
+from app.models.generated_plan import GeneratedPlan
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
@@ -76,7 +83,28 @@ def update_project(
 def delete_project(
     project_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> None:
+    """No FK is set up with ON DELETE CASCADE (nor is any SQLAlchemy relationship cascade
+    configured on Project), so every table that hangs off a project - directly or transitively
+    through a change_request/agent_run/generated_plan - has to be cleared in child-before-parent
+    order, or Postgres rejects the final project delete with a foreign key violation."""
     project = _get_owned_project_or_404(db, project_id, user)
-    db.query(ProjectMember).filter(ProjectMember.project_id == project.id).delete()
+
+    change_request_ids = db.query(ChangeRequest.id).filter(ChangeRequest.project_id == project.id).scalar_subquery()
+    run_ids = db.query(AgentRun.id).filter(AgentRun.change_request_id.in_(change_request_ids)).scalar_subquery()
+    plan_ids = db.query(GeneratedPlan.id).filter(GeneratedPlan.change_request_id.in_(change_request_ids)).scalar_subquery()
+
+    db.query(Approval).filter(Approval.plan_id.in_(plan_ids)).delete(synchronize_session=False)
+    db.query(GeneratedPlan).filter(GeneratedPlan.change_request_id.in_(change_request_ids)).delete(synchronize_session=False)
+    db.query(AgentStep).filter(AgentStep.run_id.in_(run_ids)).delete(synchronize_session=False)
+    db.query(AgentRun).filter(AgentRun.change_request_id.in_(change_request_ids)).delete(synchronize_session=False)
+    db.query(ChangeRequest).filter(ChangeRequest.project_id == project.id).delete(synchronize_session=False)
+    db.query(ContentChunk).filter(ContentChunk.project_id == project.id).delete(synchronize_session=False)
+    # Nulled first - a re-uploaded document's previous_version_id can point at another document in
+    # this same project, which would otherwise trip the same FK violation as the rows above.
+    db.query(Document).filter(Document.project_id == project.id).update(
+        {"previous_version_id": None}, synchronize_session=False
+    )
+    db.query(Document).filter(Document.project_id == project.id).delete(synchronize_session=False)
+    db.query(ProjectMember).filter(ProjectMember.project_id == project.id).delete(synchronize_session=False)
     db.delete(project)
     db.commit()

@@ -9,14 +9,19 @@ import { api, ApiError, Project } from "@/lib/api";
 export default function DashboardPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[] | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   useEffect(() => {
-    api
-      .listProjects()
-      .then(setProjects)
+    Promise.all([api.listProjects(), api.getCurrentUser()])
+      .then(([projectList, user]) => {
+        setProjects(projectList);
+        setCurrentUserId(user.id);
+      })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) {
           router.push("/sign-in");
@@ -25,6 +30,20 @@ export default function DashboardPage() {
         }
       });
   }, [router]);
+
+  async function handleDelete(projectId: string) {
+    setDeletingId(projectId);
+    setError(null);
+    try {
+      await api.deleteProject(projectId);
+      setProjects((prev) => prev?.filter((p) => p.id !== projectId) ?? prev);
+    } catch {
+      setError("Could not delete that project.");
+    } finally {
+      setDeletingId(null);
+      setConfirmingId(null);
+    }
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -73,13 +92,40 @@ export default function DashboardPage() {
       ) : (
         <ul className="flex flex-col gap-2">
           {projects.map((project) => (
-            <li key={project.id}>
-              <Link
-                href={`/projects/${project.id}`}
-                className="block rounded-md border border-ink/10 bg-surface px-4 py-3 text-sm text-ink hover:border-trace"
-              >
+            <li
+              key={project.id}
+              className="flex items-center gap-3 rounded-md border border-ink/10 bg-surface px-4 py-3 text-sm hover:border-trace"
+            >
+              <Link href={`/projects/${project.id}`} className="flex-1 text-ink">
                 {project.name}
               </Link>
+              {project.owner_id === currentUserId &&
+                (confirmingId === project.id ? (
+                  <span className="flex shrink-0 items-center gap-2 text-xs">
+                    <span className="text-ink/60">Delete this project and everything in it?</span>
+                    <button
+                      onClick={() => handleDelete(project.id)}
+                      disabled={deletingId === project.id}
+                      className="font-medium text-red-700 hover:underline disabled:opacity-60 dark:text-red-400"
+                    >
+                      {deletingId === project.id ? "Deleting…" : "Confirm"}
+                    </button>
+                    <button
+                      onClick={() => setConfirmingId(null)}
+                      disabled={deletingId === project.id}
+                      className="text-ink/50 hover:text-ink"
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => setConfirmingId(project.id)}
+                    className="shrink-0 text-xs text-ink/50 hover:text-red-700"
+                  >
+                    Delete
+                  </button>
+                ))}
             </li>
           ))}
         </ul>

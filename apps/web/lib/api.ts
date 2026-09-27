@@ -157,6 +157,7 @@ export const api = {
   createProject: (name: string) =>
     request<Project>("/projects", { method: "POST", body: JSON.stringify({ name }) }),
   getProject: (projectId: string) => request<Project>(`/projects/${projectId}`),
+  deleteProject: (projectId: string) => request<void>(`/projects/${projectId}`, { method: "DELETE" }),
   listDocuments: (projectId: string) => request<ProjectDocument[]>(`/projects/${projectId}/documents`),
   uploadDocument: (projectId: string, file: File) => {
     const form = new FormData();

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { clearLastProjectId } from "@/lib/lastProject";
 import { applyTheme, getStoredThemePreference, setStoredThemePreference, type ThemePreference } from "@/lib/theme";
+import { Logo } from "@/components/Logo";
 
 const THEME_CYCLE: ThemePreference[] = ["system", "light", "dark"];
 const THEME_LABEL: Record<ThemePreference, string> = {
@@ -47,8 +48,8 @@ export function TopNav() {
   return (
     <nav className="mb-8 flex items-center justify-between border-b border-ink/10 pb-4 text-sm">
       <div className="flex items-center gap-5">
-        <Link href="/dashboard" className="font-serif text-base font-semibold text-ink">
-          Spectrace AI
+        <Link href="/dashboard">
+          <Logo />
         </Link>
         <Link href="/dashboard" className="text-ink/60 hover:text-ink">
           Projects

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Logo } from "@/components/Logo";
 
 const FEATURES = [
   {
@@ -37,7 +38,7 @@ export default function LandingPage() {
   return (
     <main className="min-h-screen bg-background text-ink">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-        <span className="font-serif text-lg font-semibold">Spectrace AI</span>
+        <Logo />
         <nav className="flex items-center gap-6 text-sm">
           <Link href="/guide" className="text-ink/60 hover:text-ink">
             How it works

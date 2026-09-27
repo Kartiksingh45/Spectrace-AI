@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { Inter, Lora } from "next/font/google";
+import { Inter, Lora, Sora } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 const lora = Lora({ subsets: ["latin"], variable: "--font-serif" });
+const sora = Sora({ subsets: ["latin"], variable: "--font-logo" });
 
 export const metadata: Metadata = {
   title: "Spectrace AI",
@@ -22,7 +23,7 @@ const THEME_INIT_SCRIPT = `
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${lora.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${lora.variable} ${sora.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>

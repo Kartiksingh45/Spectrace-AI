@@ -24,6 +24,11 @@ _MAX_BATCH_SIZE = 100
 # or a higher Gemini API quota, not a code fix.
 _MAX_RETRIES = 5
 _BASE_RETRY_DELAY_SECONDS = 5
+# embed_text() backs interactive, user-facing calls (agent tool calls during a live run, the
+# direct semantic search endpoint) - a user is synchronously waiting on the request, so it fails
+# fast with one short retry rather than blocking for the full multi-minute budget above, which is
+# only appropriate for the backgrounded bulk-ingestion path (embed_batch, called directly).
+_INTERACTIVE_MAX_RETRIES = 1
 
 
 @lru_cache(maxsize=1)
@@ -45,13 +50,13 @@ def _normalize(vector: list[float]) -> list[float]:
 
 
 def embed_text(text: str) -> list[float]:
-    return embed_batch([text])[0]
+    return embed_batch([text], max_retries=_INTERACTIVE_MAX_RETRIES)[0]
 
 
-def _embed_with_retry(client, batch: list[str], config):
+def _embed_with_retry(client, batch: list[str], config, max_retries: int):
     from google.genai.errors import ClientError
 
-    for attempt in range(_MAX_RETRIES + 1):
+    for attempt in range(max_retries + 1):
         try:
             return client.models.embed_content(
                 model=settings.embedding_model_name,
@@ -59,19 +64,19 @@ def _embed_with_retry(client, batch: list[str], config):
                 config=config,
             )
         except ClientError as exc:
-            if exc.code != 429 or attempt == _MAX_RETRIES:
+            if exc.code != 429 or attempt == max_retries:
                 raise
             delay = _BASE_RETRY_DELAY_SECONDS * (2**attempt)
             logger.warning(
                 "Gemini embedding quota hit (429), retrying in %ss (attempt %s/%s)",
                 delay,
                 attempt + 1,
-                _MAX_RETRIES,
+                max_retries,
             )
             time.sleep(delay)
 
 
-def embed_batch(texts: list[str]) -> list[list[float]]:
+def embed_batch(texts: list[str], max_retries: int = _MAX_RETRIES) -> list[list[float]]:
     if not texts:
         return []
 
@@ -82,6 +87,6 @@ def embed_batch(texts: list[str]) -> list[list[float]]:
     vectors: list[list[float]] = []
     for i in range(0, len(texts), _MAX_BATCH_SIZE):
         batch = texts[i : i + _MAX_BATCH_SIZE]
-        result = _embed_with_retry(client, batch, config)
+        result = _embed_with_retry(client, batch, config, max_retries)
         vectors.extend(_normalize(list(e.values)) for e in result.embeddings)
     return vectors

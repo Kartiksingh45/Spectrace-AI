@@ -87,6 +87,8 @@ export type ProjectDocument = {
   duration_ms: number | null;
   version: number;
   previous_version_id: string | null;
+  chunks_total: number | null;
+  chunks_embedded: number | null;
   created_at: string;
 };
 

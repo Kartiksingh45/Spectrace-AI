@@ -648,6 +648,24 @@ export default function ProjectWorkspacePage() {
                     {doc.version > 1 && <span className="ml-1 text-xs text-ink/40">v{doc.version}</span>}
                   </p>
                   <p className="text-xs text-ink/50">{doc.kind === "requirement" ? "Requirement doc" : "Codebase"}</p>
+                  {doc.status === "processing" && !!doc.chunks_total && (
+                    <div className="mt-1.5 w-40">
+                      <div className="mb-0.5 flex items-center justify-between text-[10px] text-ink/50">
+                        <span>Embedding…</span>
+                        <span>
+                          {doc.chunks_embedded ?? 0}/{doc.chunks_total}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink/10">
+                        <div
+                          className="h-full rounded-full bg-accent transition-[width] duration-300"
+                          style={{
+                            width: `${Math.round(((doc.chunks_embedded ?? 0) / doc.chunks_total) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
                   {doc.status === "failed" && doc.error && (
                     <p className="mt-1 text-xs text-red-700">{doc.error}</p>
                   )}

@@ -10,6 +10,7 @@ distinction) - retrieval quality benefits from using the right one at each call 
 """
 import logging
 import time
+from typing import Callable
 
 import httpx
 
@@ -64,8 +65,15 @@ def _post_with_retry(payload: dict, max_retries: int) -> dict:
 
 
 def embed_batch(
-    texts: list[str], task: str = "retrieval.passage", max_retries: int = _MAX_RETRIES
+    texts: list[str],
+    task: str = "retrieval.passage",
+    max_retries: int = _MAX_RETRIES,
+    on_batch_done: Callable[[int], None] | None = None,
 ) -> list[list[float]]:
+    """on_batch_done, if given, is called with the running total of embedded texts after each
+    batch completes - bulk ingestion uses it to persist live progress a client can poll, since a
+    large codebase can take minutes (see _INTER_BATCH_DELAY_SECONDS) with no other signal
+    otherwise that anything is happening."""
     if not texts:
         return []
 
@@ -84,4 +92,6 @@ def embed_batch(
         }
         result = _post_with_retry(payload, max_retries)
         vectors.extend(item["embedding"] for item in sorted(result["data"], key=lambda d: d["index"]))
+        if on_batch_done:
+            on_batch_done(len(vectors))
     return vectors

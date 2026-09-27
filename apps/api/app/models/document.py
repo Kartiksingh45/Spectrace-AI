@@ -25,4 +25,8 @@ class Document(Base):
         Uuid(as_uuid=True), ForeignKey("documents.id"), nullable=True
     )
     full_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Set once chunking finishes (before embedding starts) so the client can render a percentage
+    # immediately, even at 0/N, instead of an indeterminate "processing" with no sense of scale.
+    chunks_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    chunks_embedded: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

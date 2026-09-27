@@ -16,6 +16,8 @@ class DocumentOut(BaseModel):
     duration_ms: int | None
     version: int
     previous_version_id: uuid.UUID | None
+    chunks_total: int | None
+    chunks_embedded: int | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

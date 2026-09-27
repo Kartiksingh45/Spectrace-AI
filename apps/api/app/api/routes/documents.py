@@ -39,13 +39,18 @@ def _embed_and_finish(
     started: float,
 ) -> None:
     """Runs as a BackgroundTask: the slow, network-bound part of ingestion (embedding, which can
-    take anywhere from seconds to minutes once Gemini's free-tier rate limit forces retries with
-    backoff). Kept out of the request/response cycle so a big upload can't block past a proxy's
-    timeout - the document is already visible to the client with status=processing by the time
-    this runs."""
+    take anywhere from seconds to minutes for a large codebase once Jina's rate limit forces
+    retries with backoff). Kept out of the request/response cycle so a big upload can't block past
+    a proxy's timeout - the document is already visible to the client with status=processing (and
+    chunks_total set) by the time this runs, and chunks_embedded updates after each batch so the
+    client can render live progress instead of an indeterminate wait."""
     document = db.get(Document, document_id)
     try:
-        vectors = embed_batch([c.text for c in candidates])
+        def _on_batch_done(count_done: int) -> None:
+            document.chunks_embedded = count_done
+            db.commit()
+
+        vectors = embed_batch([c.text for c in candidates], on_batch_done=_on_batch_done)
         for candidate, vector in zip(candidates, vectors):
             db.add(
                 ContentChunk(
@@ -129,6 +134,8 @@ async def upload_requirement_document(
         previous_version_id=previous_version_id,
         full_text=full_text,
         status=DocumentStatus.processing,
+        chunks_total=len(candidates),
+        chunks_embedded=0,
     )
     db.add(document)
     db.commit()
@@ -182,7 +189,14 @@ def _ingest_codebase_zip(
         db.refresh(document)
         return document
 
-    document = Document(project_id=project.id, kind=ContentKind.code, filename=filename, status=DocumentStatus.processing)
+    document = Document(
+        project_id=project.id,
+        kind=ContentKind.code,
+        filename=filename,
+        status=DocumentStatus.processing,
+        chunks_total=len(candidates),
+        chunks_embedded=0,
+    )
     db.add(document)
     db.commit()
     db.refresh(document)

@@ -41,6 +41,11 @@ const STEPS = [
 ];
 
 function MarketingLanding() {
+  // Signed-out visitors can still see the full nav as a preview of the site's structure -
+  // clicking any of these already redirects to /sign-in on its own (each page's own 401 check),
+  // so nothing extra needs to be done to gate them.
+  const brdHref = useBrdHref();
+
   return (
     <main className="min-h-screen bg-background text-ink">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
@@ -48,8 +53,17 @@ function MarketingLanding() {
           <Logo />
         </Link>
         <nav className="flex items-center gap-6 text-sm">
+          <Link href="/dashboard" className="text-ink/60 hover:text-ink">
+            Projects
+          </Link>
           <Link href="/guide" className="text-ink/60 hover:text-ink">
-            How it works
+            Guide
+          </Link>
+          <Link href={brdHref} className="text-ink/60 hover:text-ink">
+            BRD generator
+          </Link>
+          <Link href="/profile" className="text-ink/60 hover:text-ink">
+            My Profile
           </Link>
           <Link href="/sign-in" className="text-ink/60 hover:text-ink">
             Sign in

@@ -29,6 +29,10 @@ _BASE_RETRY_DELAY_SECONDS = 5
 # fast with one short retry rather than blocking for the full multi-minute budget above, which is
 # only appropriate for the backgrounded bulk-ingestion path (embed_batch, called directly).
 _INTERACTIVE_MAX_RETRIES = 1
+# A large codebase produces many back-to-back batches - observed in production firing them with
+# no pacing collided with Jina's per-request rate limit on nearly every single batch, burning
+# retries (and multiple minutes) that a small proactive gap between batches mostly avoids.
+_INTER_BATCH_DELAY_SECONDS = 1.5
 
 
 def embed_text(text: str, task: str = "retrieval.query") -> list[float]:
@@ -67,6 +71,8 @@ def embed_batch(
 
     vectors: list[list[float]] = []
     for i in range(0, len(texts), _MAX_BATCH_SIZE):
+        if i > 0:
+            time.sleep(_INTER_BATCH_DELAY_SECONDS)
         batch = texts[i : i + _MAX_BATCH_SIZE]
         payload = {
             "model": settings.embedding_model_name,

@@ -161,7 +161,7 @@ def find_similar_stories(
     for plan, summary in summaries:
         if not summary:
             continue
-        vec = embed_text(summary)
+        vec = embed_text(summary, task="retrieval.passage")
         scored.append((summary, cosine(query_vec, vec)))
 
     scored.sort(key=lambda pair: pair[1], reverse=True)

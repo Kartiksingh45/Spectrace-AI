@@ -1,27 +1,27 @@
-"""Gemini-backed embedding generation - replaces a local sentence-transformers/PyTorch model,
-which pushed peak memory past a constrained host's limit (observed in production: the deployed
-API was repeatedly OOM-killed at >512MB on Render's free tier once real ingestion/search traffic
-touched it). Embeddings are truncated to settings.embedding_dimensions via Gemini's
-output_dimensionality parameter, matching the existing pgvector column width - no migration
-needed for chunks embedded under the old model's same dimension.
+"""Jina AI-backed embedding generation - replaces Gemini's embedding API, whose free-tier daily
+quota proved too tight for real ingestion traffic (a single codebase ZIP upload, or even a
+handful of agent search steps, could exhaust it - see git history on this file for the earlier
+sentence-transformers/PyTorch -> Gemini -> Jina progression and why each prior step wasn't
+enough). The LLM (classification, plan generation, the agent's tool loop) still runs on Gemini
+via langchain-google-genai - only embeddings moved, since Gemini's chat quota was never the
+bottleneck. Jina's `task` parameter asks for a query- or passage-tuned embedding, which the
+underlying model actually optimizes differently (unlike Gemini's embedding API, which had no such
+distinction) - retrieval quality benefits from using the right one at each call site.
 """
 import logging
-import math
 import time
-from functools import lru_cache
+
+import httpx
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Google's batch embed endpoint caps a single request at 100 inputs.
+_API_URL = "https://api.jina.ai/v1/embeddings"
+# Comfortably under Jina's per-request batch cap while still keeping each call reasonably sized.
 _MAX_BATCH_SIZE = 100
-# The free tier's embedding quota is tight enough that even one real codebase upload (many
-# chunks -> many batchEmbedContents calls in quick succession) can trip a per-minute rate limit -
-# observed in production as a 429 RESOURCE_EXHAUSTED. Retrying with backoff recovers from that
-# burst; it does NOT help if the quota is exhausted for a longer window (e.g. daily) - that
-# surfaces as the same 429 after retries are exhausted, and needs waiting for the quota to reset
-# or a higher Gemini API quota, not a code fix.
+# A daily-exhausted quota won't be fixed by retrying (see the module docstring's history) - this
+# budget is sized to ride out a brief per-minute rate limit, not a longer-window cap.
 _MAX_RETRIES = 5
 _BASE_RETRY_DELAY_SECONDS = 5
 # embed_text() backs interactive, user-facing calls (agent tool calls during a live run, the
@@ -31,62 +31,51 @@ _BASE_RETRY_DELAY_SECONDS = 5
 _INTERACTIVE_MAX_RETRIES = 1
 
 
-@lru_cache(maxsize=1)
-def _get_client():
-    from google import genai
-
-    return genai.Client(api_key=settings.gemini_api_key)
+def embed_text(text: str, task: str = "retrieval.query") -> list[float]:
+    return embed_batch([text], task=task, max_retries=_INTERACTIVE_MAX_RETRIES)[0]
 
 
-def _normalize(vector: list[float]) -> list[float]:
-    """Gemini only unit-normalizes its native (full-width) output - a truncated
-    output_dimensionality result is NOT pre-normalized, but the rest of this codebase (the manual
-    dot-product "cosine" shortcut in retrieval.py's find_similar_stories) assumes it is.
-    """
-    norm = math.sqrt(sum(x * x for x in vector))
-    if norm == 0:
-        return vector
-    return [x / norm for x in vector]
-
-
-def embed_text(text: str) -> list[float]:
-    return embed_batch([text], max_retries=_INTERACTIVE_MAX_RETRIES)[0]
-
-
-def _embed_with_retry(client, batch: list[str], config, max_retries: int):
-    from google.genai.errors import ClientError
-
+def _post_with_retry(payload: dict, max_retries: int) -> dict:
+    headers = {
+        "Authorization": f"Bearer {settings.jina_api_key}",
+        "Content-Type": "application/json",
+    }
     for attempt in range(max_retries + 1):
         try:
-            return client.models.embed_content(
-                model=settings.embedding_model_name,
-                contents=batch,
-                config=config,
-            )
-        except ClientError as exc:
-            if exc.code != 429 or attempt == max_retries:
+            response = httpx.post(_API_URL, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 429 or attempt == max_retries:
                 raise
             delay = _BASE_RETRY_DELAY_SECONDS * (2**attempt)
             logger.warning(
-                "Gemini embedding quota hit (429), retrying in %ss (attempt %s/%s)",
+                "Jina embedding quota hit (429), retrying in %ss (attempt %s/%s)",
                 delay,
                 attempt + 1,
                 max_retries,
             )
             time.sleep(delay)
+    raise AssertionError("unreachable")  # loop always returns or raises
 
 
-def embed_batch(texts: list[str], max_retries: int = _MAX_RETRIES) -> list[list[float]]:
+def embed_batch(
+    texts: list[str], task: str = "retrieval.passage", max_retries: int = _MAX_RETRIES
+) -> list[list[float]]:
     if not texts:
         return []
 
-    from google.genai import types
-
-    client = _get_client()
-    config = types.EmbedContentConfig(output_dimensionality=settings.embedding_dimensions)
     vectors: list[list[float]] = []
     for i in range(0, len(texts), _MAX_BATCH_SIZE):
         batch = texts[i : i + _MAX_BATCH_SIZE]
-        result = _embed_with_retry(client, batch, config, max_retries)
-        vectors.extend(_normalize(list(e.values)) for e in result.embeddings)
+        payload = {
+            "model": settings.embedding_model_name,
+            "task": task,
+            "dimensions": settings.embedding_dimensions,
+            "normalized": True,
+            "embedding_type": "float",
+            "input": batch,
+        }
+        result = _post_with_retry(payload, max_retries)
+        vectors.extend(item["embedding"] for item in sorted(result["data"], key=lambda d: d["index"]))
     return vectors

@@ -25,8 +25,10 @@ class Settings(BaseSettings):
     agent_max_steps: int = 8
     agent_review_max_retries: int = 2
 
-    # Gemini's embedding model (not a local sentence-transformers model - see embeddings.py for why)
-    embedding_model_name: str = "models/gemini-embedding-001"
+    # Embeddings run through Jina AI, not Gemini (which the LLM calls above still use) - Gemini's
+    # free-tier embedding quota proved too tight for real ingestion traffic (see embeddings.py).
+    jina_api_key: str = ""
+    embedding_model_name: str = "jina-embeddings-v3"
     embedding_dimensions: int = 384
     # The cross-encoder reranker loads a second PyTorch model on top of the embedding model - on a
     # memory-constrained host (e.g. Render's free 512MB tier, which was observed to OOM-kill this

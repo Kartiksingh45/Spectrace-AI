@@ -65,7 +65,7 @@ def test_get_chunk_context_unknown_chunk_returns_empty(db_session):
     assert get_chunk_context(db_session, uuid.uuid4()) == []
 
 
-def _fake_embed(text: str) -> list[float]:
+def _fake_embed(text: str, **kwargs) -> list[float]:
     # Deterministic stand-in for the real embedding model - keeps this test fast and offline.
     return [1.0, 0.0] if "otp" in text.lower() else [0.0, 1.0]
 

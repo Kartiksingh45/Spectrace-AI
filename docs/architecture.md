@@ -21,16 +21,18 @@ flowchart LR
     end
 
     subgraph External
-        Gemini["Gemini\n(classification, tool selection, plan generation, embeddings)"]
+        Gemini["Gemini\n(classification, tool selection, plan generation)"]
+        Jina["Jina AI\n(embeddings)"]
     end
 
     Web -- "HTTPS + session cookie" --> API
     API --> Ingest
-    Ingest --> Gemini
+    Ingest --> Jina
     Ingest --> PG
     Ingest --> Vec
     API --> Agent
     Agent --> Gemini
+    Agent --> Jina
     Agent -- "search_requirements / search_codebase" --> Vec
     Agent --> PG
     Agent --> Checkpoint

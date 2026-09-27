@@ -28,7 +28,7 @@ def _deterministic_vector(text: str, dimensions: int) -> list[float]:
 
 @pytest.fixture(autouse=True)
 def _fake_embeddings(monkeypatch):
-    """Embeddings now call the real Gemini API (see app/services/embeddings.py) - tests must
+    """Embeddings now call the real Jina AI API (see app/services/embeddings.py) - tests must
     never hit that for real, or the suite becomes slow, flaky, quota-limited, and non-free to run.
     A deterministic hash-based vector stands in; nothing in this suite asserts on actual semantic
     similarity from real embeddings (search_chunks itself can't run on SQLite anyway - pgvector's
@@ -37,10 +37,10 @@ def _fake_embeddings(monkeypatch):
     overrides this default for its own duration, same as any other monkeypatch.
     """
 
-    def fake_embed_batch(texts):
+    def fake_embed_batch(texts, **kwargs):
         return [_deterministic_vector(t, settings.embedding_dimensions) for t in texts]
 
-    def fake_embed_text(text):
+    def fake_embed_text(text, **kwargs):
         return _deterministic_vector(text, settings.embedding_dimensions)
 
     monkeypatch.setattr("app.api.routes.documents.embed_batch", fake_embed_batch)

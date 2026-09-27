@@ -11,7 +11,7 @@ See [`Spectrace_AI_BRD.docx`](Spectrace_AI_BRD.docx) for the full Business Requi
 
 ```
 Next.js (apps/web)  →  FastAPI (apps/api)  →  Postgres + pgvector (cloud: Neon or Supabase)
-                                            →  Gemini (LLM + embeddings)
+                                            →  Gemini (LLM) + Jina AI (embeddings)
 ```
 
 | Layer          | Technology                                  |
@@ -22,7 +22,7 @@ Next.js (apps/web)  →  FastAPI (apps/api)  →  Postgres + pgvector (cloud: Ne
 | Vector search  | pgvector extension on the same Postgres      |
 | Agent          | LangGraph                                    |
 | LLM            | Gemini                                       |
-| Embeddings     | Gemini's embedding API (`gemini-embedding-001`) |
+| Embeddings     | Jina AI's embedding API (`jina-embeddings-v3`) |
 
 The app talks to Postgres directly through SQLAlchemy/Alembic — no vendor BaaS SDK (auth, storage
 client, etc.) is used, even when the database is hosted on Supabase. This is a deliberate constraint from
@@ -160,12 +160,13 @@ then create a project from the dashboard.
 | `JWT_ALGORITHM`                | JWT signing algorithm (default `HS256`)                          |
 | `ACCESS_TOKEN_EXPIRE_MINUTES`  | Session lifetime in minutes                                      |
 | `FRONTEND_ORIGIN`               | Origin allowed by CORS (the Next.js dev/prod URL)                |
-| `GEMINI_API_KEY`               | Gemini API key — powers classification, tool selection, plan generation, and embeddings |
+| `GEMINI_API_KEY`               | Gemini API key — powers classification, tool selection, and plan generation (not embeddings) |
 | `GEMINI_MODEL_NAME`            | Gemini model for the agent (default `gemini-3.5-flash-lite`)       |
 | `AGENT_MAX_STEPS`              | Cap on tool-calling turns before forcing an insufficient-evidence fallback |
 | `AGENT_REVIEW_MAX_RETRIES`     | How many times a plan can be bounced back for ungrounded citations before falling back |
-| `EMBEDDING_MODEL_NAME`         | Gemini embedding model used to embed chunks (default `models/gemini-embedding-001`) |
-| `EMBEDDING_DIMENSIONS`        | Truncated output width via Gemini's `output_dimensionality` (384 by default) |
+| `JINA_API_KEY`                 | Jina AI API key (free, no card - jina.ai/embeddings) — powers embeddings |
+| `EMBEDDING_MODEL_NAME`         | Jina embedding model used to embed chunks (default `jina-embeddings-v3`) |
+| `EMBEDDING_DIMENSIONS`        | Truncated output width via Jina's `dimensions` parameter (384 by default) |
 | `ENABLE_RERANKER`              | Cross-encoder reranking pass over search results (default `true`; needs `sentence-transformers` installed, not a default dependency) |
 | `CHUNK_SIZE` / `CHUNK_OVERLAP` | Character-based chunking window for requirement docs and code    |
 | `MAX_DOCUMENT_SIZE_MB`         | Upload size limit for requirement documents                       |
@@ -229,14 +230,16 @@ live paid account, so this is "ready to deploy", not "currently deployed":
   Python host.
 - **API → a Python host (Render):** `apps/api/render.yaml` is a ready-to-use Render Blueprint
   (`apps/api/Dockerfile` runs `alembic upgrade head` then `uvicorn` on start) - set the
-  `DATABASE_URL`, `JWT_SECRET`, `FRONTEND_ORIGIN`, and `GEMINI_API_KEY` secrets in the Render
-  dashboard. Any other Docker-friendly host works the same way (Fly.io, Railway, a VM).
+  `DATABASE_URL`, `JWT_SECRET`, `FRONTEND_ORIGIN`, `GEMINI_API_KEY`, and `JINA_API_KEY` secrets in
+  the Render dashboard. Any other Docker-friendly host works the same way (Fly.io, Railway, a VM).
   **Memory:** an earlier version of this app embedded locally via a PyTorch/sentence-transformers
   model, which repeatedly got the deployed process OOM-killed on Render's free 512MB tier (a
   no-card-required host is worth keeping, so the fix was to shrink the app, not upgrade the
-  host) - embeddings now go through Gemini's own API instead (`app/services/embeddings.py`),
-  removing PyTorch entirely. The cross-encoder reranker (optional; `ENABLE_RERANKER`) still uses
-  `sentence-transformers` if enabled, but it's no longer a default dependency
-  (`requirements.txt`) - install it separately if you want it loaded.
+  host) - embeddings went through Gemini's own API next, removing PyTorch entirely, but Gemini's
+  free-tier embedding quota proved too tight for real ingestion traffic (a single codebase ZIP
+  upload could exhaust it); embeddings now go through Jina AI instead
+  (`app/services/embeddings.py`), which has a far more generous free daily quota. The cross-encoder
+  reranker (optional; `ENABLE_RERANKER`) still uses `sentence-transformers` if enabled, but it's no
+  longer a default dependency (`requirements.txt`) - install it separately if you want it loaded.
 - **Database:** the existing free-tier Neon/Supabase Postgres already in use for development works
   unchanged in production - just point `DATABASE_URL` at it.

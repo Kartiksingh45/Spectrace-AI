@@ -512,14 +512,9 @@ export default function ProjectWorkspacePage() {
   return (
     <main className="mx-auto max-w-3xl px-4 py-12">
       <TopNav />
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="font-serif text-2xl font-semibold text-ink">
-          {project?.name ?? "Loading…"}
-        </h1>
-        <Link href={`/projects/${projectId}/brd`} className="shrink-0 text-sm text-trace hover:underline">
-          BRD generator
-        </Link>
-      </div>
+      <h1 className="font-serif text-2xl font-semibold text-ink">
+        {project?.name ?? "Loading…"}
+      </h1>
 
       {loadError && <p className="mt-4 text-sm text-red-700">{loadError}</p>}
 

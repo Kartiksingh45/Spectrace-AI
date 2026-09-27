@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { clearLastProjectId } from "@/lib/lastProject";
+import { clearLastProjectId, getLastProjectId } from "@/lib/lastProject";
 import { applyTheme, getStoredThemePreference, setStoredThemePreference, type ThemePreference } from "@/lib/theme";
 import { Logo } from "@/components/Logo";
 
@@ -38,6 +38,14 @@ function ThemeToggle() {
 
 export function TopNav() {
   const router = useRouter();
+  // BRD generation is project-scoped - send the user back into whichever project they were last
+  // working in rather than requiring the link to already be inside a /projects/[id] route.
+  const [brdHref, setBrdHref] = useState("/dashboard");
+
+  useEffect(() => {
+    const lastProjectId = getLastProjectId();
+    if (lastProjectId) setBrdHref(`/projects/${lastProjectId}/brd`);
+  }, []);
 
   async function handleSignOut() {
     clearLastProjectId();
@@ -56,6 +64,9 @@ export function TopNav() {
         </Link>
         <Link href="/guide" className="text-ink/60 hover:text-ink">
           Guide
+        </Link>
+        <Link href={brdHref} className="text-ink/60 hover:text-ink">
+          BRD generator
         </Link>
         <Link href="/profile" className="text-ink/60 hover:text-ink">
           My Profile

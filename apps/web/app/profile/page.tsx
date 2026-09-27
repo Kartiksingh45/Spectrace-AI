@@ -66,7 +66,8 @@ export default function ProfilePage() {
       {loadError && <p className="text-sm text-red-700">{loadError}</p>}
 
       {user && (
-        <section className="mb-10 rounded-md border border-ink/10 bg-surface p-5">
+        <section className="mb-10 rounded-lg border border-ink/10 bg-surface p-5 shadow-sm">
+          <div className="mb-3 h-1.5 w-8 rounded-full bg-trace" />
           <dl className="flex flex-col gap-3 text-sm">
             <div>
               <dt className="text-xs font-medium uppercase tracking-wide text-ink/50">Email</dt>
@@ -88,7 +89,8 @@ export default function ProfilePage() {
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink/50">
           Change password
         </h2>
-        <form onSubmit={handleChangePassword} className="flex flex-col gap-3 rounded-md border border-ink/10 bg-surface p-5">
+        <form onSubmit={handleChangePassword} className="flex flex-col gap-3 rounded-lg border border-ink/10 bg-surface p-5 shadow-sm">
+          <div className="-mt-1 mb-1 h-1.5 w-8 rounded-full bg-trace" />
           <label className="flex flex-col gap-1 text-sm">
             Current password
             <input

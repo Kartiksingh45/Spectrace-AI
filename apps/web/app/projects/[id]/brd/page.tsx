@@ -183,7 +183,7 @@ function RequirementSection({
 
 function BrdView({ brd }: { brd: GeneratedBrd }) {
   return (
-    <div className="flex flex-col gap-5 rounded-md border border-ink/10 bg-surface p-5 text-sm">
+    <div className="flex flex-col gap-5 rounded-lg border border-ink/10 bg-surface p-5 shadow-sm text-sm">
       <div>
         <p className="font-medium text-ink">Executive summary</p>
         <p className="mt-1 text-ink/70">{brd.executive_summary}</p>
@@ -413,7 +413,7 @@ export default function BrdGeneratorPage() {
             {history.map((doc) => (
               <li
                 key={doc.id}
-                className="flex items-center justify-between gap-3 rounded-md border border-ink/10 bg-surface px-4 py-3 text-sm"
+                className="flex items-center justify-between gap-3 rounded-lg border border-ink/10 bg-surface px-4 py-3 transition-colors hover:border-trace text-sm"
               >
                 <button
                   onClick={() => setCurrent(doc)}

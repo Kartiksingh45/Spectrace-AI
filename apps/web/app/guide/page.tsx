@@ -141,14 +141,22 @@ export default function GuidePage() {
       </p>
 
       <ol className="flex flex-col gap-5">
-        {STEPS.map((step) => (
-          <li key={step.title} className="rounded-md border border-ink/10 bg-surface p-5">
-            <h2 className="mb-1 text-sm font-semibold text-ink">{step.title}</h2>
+        {STEPS.map((step, i) => (
+          <li
+            key={step.title}
+            className="rounded-lg border border-ink/10 bg-surface p-5 shadow-sm transition-colors hover:border-trace"
+          >
+            <div className="mb-2 flex items-center gap-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-trace/15 text-xs font-semibold text-trace">
+                {i + 1}
+              </span>
+              <h2 className="text-sm font-semibold text-ink">{step.title.replace(/^\d+\.\s*/, "")}</h2>
+            </div>
             <p className="text-sm text-ink/70">{step.body}</p>
             {step.points && (
               <ul className="mt-2 list-disc pl-5 text-sm text-ink/70">
-                {step.points.map((point, i) => (
-                  <li key={i} className="mt-1">
+                {step.points.map((point, j) => (
+                  <li key={j} className="mt-1">
                     {point}
                   </li>
                 ))}

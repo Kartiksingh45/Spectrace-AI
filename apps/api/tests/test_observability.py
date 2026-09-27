@@ -41,10 +41,14 @@ def test_document_upload_records_ingestion_duration(client):
     project = client.post("/projects", json={"name": "Demo"}).json()
 
     content = b"Mobile OTP must be verified before loan submission. " * 20
-    upload = client.post(
+    started = client.post(
         f"/projects/{project['id']}/documents",
         files={"file": ("rules.txt", io.BytesIO(content), "text/plain")},
     ).json()
+    # Embedding now runs as a background task - its own response reflects the state from just
+    # before that task ran, so re-fetch for the up-to-date state.
+    docs = client.get(f"/projects/{project['id']}/documents").json()
+    upload = next(d for d in docs if d["id"] == started["id"])
 
     assert upload["status"] == "ready"
     assert isinstance(upload["duration_ms"], int)

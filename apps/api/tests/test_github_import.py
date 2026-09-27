@@ -25,10 +25,14 @@ def test_github_import_ingests_a_public_repo(mock_download, client):
     mock_download.return_value = _make_repo_zip()
     project = _register_and_create_project(client)
 
-    doc = client.post(
+    started = client.post(
         f"/projects/{project['id']}/github-import",
         json={"owner": "octocat", "repo": "demo", "branch": "main"},
     ).json()
+    # Embedding now runs as a background task - its own response reflects the state from just
+    # before that task ran, so re-fetch for the up-to-date state.
+    docs = client.get(f"/projects/{project['id']}/documents").json()
+    doc = next(d for d in docs if d["id"] == started["id"])
 
     assert doc["status"] == "ready"
     assert doc["kind"] == "code"

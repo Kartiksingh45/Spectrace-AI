@@ -230,6 +230,27 @@ export default function ProjectWorkspacePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
+  // Ingestion (embedding) now runs as a background task on the API, so a freshly uploaded
+  // document comes back as "uploaded"/"processing" - poll until every document has reached a
+  // terminal status (ready/failed) instead of leaving the badge stuck.
+  useEffect(() => {
+    if (!documents.some((d) => d.status === "uploaded" || d.status === "processing")) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      if (cancelled) return;
+      try {
+        const docs = await api.listDocuments(projectId);
+        if (!cancelled) setDocuments(docs);
+      } catch {
+        // transient - next poll (or a manual reload) will pick it back up
+      }
+    }, 2000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [documents, projectId]);
+
   useEffect(() => {
     // webkitdirectory/directory aren't part of React's HTMLInputElement typings - set them
     // imperatively on the underlying DOM node instead of fighting the JSX types over it.

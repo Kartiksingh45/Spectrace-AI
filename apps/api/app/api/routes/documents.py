@@ -3,7 +3,7 @@ import logging
 import time
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_project_member
@@ -30,9 +30,52 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects/{project_id}", tags=["documents"])
 
 
+def _embed_and_finish(
+    db: Session,
+    document_id: uuid.UUID,
+    project_id: uuid.UUID,
+    content_type: ContentKind,
+    candidates: list,
+    started: float,
+) -> None:
+    """Runs as a BackgroundTask: the slow, network-bound part of ingestion (embedding, which can
+    take anywhere from seconds to minutes once Gemini's free-tier rate limit forces retries with
+    backoff). Kept out of the request/response cycle so a big upload can't block past a proxy's
+    timeout - the document is already visible to the client with status=processing by the time
+    this runs."""
+    document = db.get(Document, document_id)
+    try:
+        vectors = embed_batch([c.text for c in candidates])
+        for candidate, vector in zip(candidates, vectors):
+            db.add(
+                ContentChunk(
+                    project_id=project_id,
+                    document_id=document_id,
+                    content_type=content_type,
+                    text=candidate.text,
+                    embedding=vector,
+                    source_metadata=candidate.metadata,
+                )
+            )
+        document.status = DocumentStatus.ready
+    except Exception:
+        db.rollback()
+        logger.exception("Document ingestion failed for document %s", document_id)
+        document.status = DocumentStatus.failed
+        document.error = "Ingestion failed due to an internal error"
+
+    document.duration_ms = int((time.monotonic() - started) * 1000)
+    db.commit()
+    logger.info(
+        "document_ingested document_id=%s project_id=%s status=%s duration_ms=%s",
+        document_id, project_id, document.status.value, document.duration_ms,
+    )
+
+
 @router.post("/documents", response_model=DocumentOut, status_code=status.HTTP_201_CREATED)
 async def upload_requirement_document(
     file: UploadFile,
+    background_tasks: BackgroundTasks,
     project: Project = Depends(require_project_member),
     db: Session = Depends(get_db),
 ) -> Document:
@@ -56,57 +99,54 @@ async def upload_requirement_document(
         .order_by(Document.version.desc())
         .first()
     )
+    version = previous_version.version + 1 if previous_version else 1
+    previous_version_id = previous_version.id if previous_version else None
+
+    try:
+        full_text = extract_requirement_text(filename, content)
+        candidates = parse_requirement_file(filename, content, settings.chunk_size, settings.chunk_overlap)
+    except DocumentParseError as exc:
+        document = Document(
+            project_id=project.id,
+            kind=ContentKind.requirement,
+            filename=filename,
+            version=version,
+            previous_version_id=previous_version_id,
+            status=DocumentStatus.failed,
+            error=str(exc),
+            duration_ms=int((time.monotonic() - started) * 1000),
+        )
+        db.add(document)
+        db.commit()
+        db.refresh(document)
+        return document
+
     document = Document(
         project_id=project.id,
         kind=ContentKind.requirement,
         filename=filename,
-        version=previous_version.version + 1 if previous_version else 1,
-        previous_version_id=previous_version.id if previous_version else None,
+        version=version,
+        previous_version_id=previous_version_id,
+        full_text=full_text,
+        status=DocumentStatus.processing,
     )
     db.add(document)
     db.commit()
     db.refresh(document)
 
-    try:
-        document.full_text = extract_requirement_text(document.filename, content)
-        candidates = parse_requirement_file(
-            document.filename, content, settings.chunk_size, settings.chunk_overlap
-        )
-        if candidates:
-            vectors = embed_batch([c.text for c in candidates])
-            for candidate, vector in zip(candidates, vectors):
-                db.add(
-                    ContentChunk(
-                        project_id=project.id,
-                        document_id=document.id,
-                        content_type=ContentKind.requirement,
-                        text=candidate.text,
-                        embedding=vector,
-                        source_metadata=candidate.metadata,
-                    )
-                )
-        document.status = DocumentStatus.ready
-    except DocumentParseError as exc:
-        db.rollback()
-        document.status = DocumentStatus.failed
-        document.error = str(exc)
-    except Exception:
-        db.rollback()
-        logger.exception("Requirement document ingestion failed for document %s", document.id)
-        document.status = DocumentStatus.failed
-        document.error = "Ingestion failed due to an internal error"
-
-    document.duration_ms = int((time.monotonic() - started) * 1000)
-    db.commit()
-    db.refresh(document)
-    logger.info(
-        "document_ingested document_id=%s project_id=%s status=%s duration_ms=%s",
-        document.id, project.id, document.status.value, document.duration_ms,
+    background_tasks.add_task(
+        _embed_and_finish, db, document.id, project.id, ContentKind.requirement, candidates, started
     )
     return document
 
 
-def _ingest_codebase_zip(db: Session, project: Project, filename: str, zip_bytes: bytes) -> Document:
+def _ingest_codebase_zip(
+    db: Session,
+    project: Project,
+    filename: str,
+    zip_bytes: bytes,
+    background_tasks: BackgroundTasks,
+) -> Document:
     """Shared by both a direct ZIP upload and a GitHub import - everything from safe extraction
     onward is identical regardless of where the archive's bytes came from."""
     started = time.monotonic()
@@ -120,11 +160,6 @@ def _ingest_codebase_zip(db: Session, project: Project, filename: str, zip_bytes
     except UnsafeArchiveError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    document = Document(project_id=project.id, kind=ContentKind.code, filename=filename)
-    db.add(document)
-    db.commit()
-    db.refresh(document)
-
     candidates = []
     for relpath, file_bytes in entries:
         try:
@@ -133,36 +168,27 @@ def _ingest_codebase_zip(db: Session, project: Project, filename: str, zip_bytes
             continue  # not actually a text source file despite its extension; skip it
         candidates.extend(chunk_code_file(text, relpath))
 
-    try:
-        if not candidates:
-            document.status = DocumentStatus.failed
-            document.error = "No supported source files found in archive"
-        else:
-            vectors = embed_batch([c.text for c in candidates])
-            for candidate, vector in zip(candidates, vectors):
-                db.add(
-                    ContentChunk(
-                        project_id=project.id,
-                        document_id=document.id,
-                        content_type=ContentKind.code,
-                        text=candidate.text,
-                        embedding=vector,
-                        source_metadata=candidate.metadata,
-                    )
-                )
-            document.status = DocumentStatus.ready
-    except Exception:
-        db.rollback()
-        logger.exception("Codebase ingestion failed for document %s", document.id)
-        document.status = DocumentStatus.failed
-        document.error = "Ingestion failed due to an internal error"
+    if not candidates:
+        document = Document(
+            project_id=project.id,
+            kind=ContentKind.code,
+            filename=filename,
+            status=DocumentStatus.failed,
+            error="No supported source files found in archive",
+            duration_ms=int((time.monotonic() - started) * 1000),
+        )
+        db.add(document)
+        db.commit()
+        db.refresh(document)
+        return document
 
-    document.duration_ms = int((time.monotonic() - started) * 1000)
+    document = Document(project_id=project.id, kind=ContentKind.code, filename=filename, status=DocumentStatus.processing)
+    db.add(document)
     db.commit()
     db.refresh(document)
-    logger.info(
-        "document_ingested document_id=%s project_id=%s status=%s duration_ms=%s",
-        document.id, project.id, document.status.value, document.duration_ms,
+
+    background_tasks.add_task(
+        _embed_and_finish, db, document.id, project.id, ContentKind.code, candidates, started
     )
     return document
 
@@ -170,16 +196,18 @@ def _ingest_codebase_zip(db: Session, project: Project, filename: str, zip_bytes
 @router.post("/codebases", response_model=DocumentOut, status_code=status.HTTP_201_CREATED)
 async def upload_codebase(
     file: UploadFile,
+    background_tasks: BackgroundTasks,
     project: Project = Depends(require_project_member),
     db: Session = Depends(get_db),
 ) -> Document:
     content = await file.read()
-    return _ingest_codebase_zip(db, project, file.filename or "untitled.zip", content)
+    return _ingest_codebase_zip(db, project, file.filename or "untitled.zip", content, background_tasks)
 
 
 @router.post("/github-import", response_model=DocumentOut, status_code=status.HTTP_201_CREATED)
 def import_github_repo(
     payload: GithubImportRequest,
+    background_tasks: BackgroundTasks,
     project: Project = Depends(require_project_member),
     db: Session = Depends(get_db),
 ) -> Document:
@@ -195,7 +223,7 @@ def import_github_repo(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     filename = f"{payload.owner}/{payload.repo}@{payload.branch}"
-    return _ingest_codebase_zip(db, project, filename, zip_bytes)
+    return _ingest_codebase_zip(db, project, filename, zip_bytes, background_tasks)
 
 
 @router.get("/documents", response_model=list[DocumentOut])

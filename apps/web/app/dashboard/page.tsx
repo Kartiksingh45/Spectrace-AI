@@ -17,11 +17,9 @@ export default function DashboardPage() {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([api.listProjects(), api.getCurrentUser()])
-      .then(([projectList, user]) => {
-        setProjects(projectList);
-        setCurrentUserId(user.id);
-      })
+    api
+      .listProjects()
+      .then(setProjects)
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) {
           router.push("/sign-in");
@@ -29,6 +27,9 @@ export default function DashboardPage() {
           setError("Could not load projects.");
         }
       });
+    // Only gates the per-project Delete button (owner-only) - if this fails, the project list
+    // above should still render rather than being blocked by an unrelated call.
+    api.getCurrentUser().then((user) => setCurrentUserId(user.id)).catch(() => {});
   }, [router]);
 
   async function handleDelete(projectId: string) {

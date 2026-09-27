@@ -19,8 +19,13 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 _API_URL = "https://api.jina.ai/v1/embeddings"
-# Comfortably under Jina's per-request batch cap while still keeping each call reasonably sized.
-_MAX_BATCH_SIZE = 100
+# Jina's endpoint accepts far more than this per call (published limit is in the thousands) - the
+# real constraint in practice turned out to be *request frequency*, not payload size (observed in
+# production: a batch succeeds, then the very next one gets a 429 almost immediately, regardless
+# of how big either one was). So the fix is fewer, bigger requests, not smaller ones - a large
+# codebase that needed dozens of 100-text calls (each its own chance to collide with the rate
+# limit) needs only a handful at this size, cutting total ingestion time roughly proportionally.
+_MAX_BATCH_SIZE = 500
 # A daily-exhausted quota won't be fixed by retrying (see the module docstring's history) - this
 # budget is sized to ride out a brief per-minute rate limit, not a longer-window cap.
 _MAX_RETRIES = 5
@@ -40,14 +45,14 @@ def embed_text(text: str, task: str = "retrieval.query") -> list[float]:
     return embed_batch([text], task=task, max_retries=_INTERACTIVE_MAX_RETRIES)[0]
 
 
-def _post_with_retry(payload: dict, max_retries: int) -> dict:
+def _post_with_retry(payload: dict, max_retries: int, timeout: float) -> dict:
     headers = {
         "Authorization": f"Bearer {settings.jina_api_key}",
         "Content-Type": "application/json",
     }
     for attempt in range(max_retries + 1):
         try:
-            response = httpx.post(_API_URL, json=payload, headers=headers, timeout=30)
+            response = httpx.post(_API_URL, json=payload, headers=headers, timeout=timeout)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as exc:
@@ -90,7 +95,10 @@ def embed_batch(
             "embedding_type": "float",
             "input": batch,
         }
-        result = _post_with_retry(payload, max_retries)
+        # Scales with batch size - a 500-text bulk-ingestion batch takes proportionally longer for
+        # Jina to compute server-side than the single-text interactive path needs to wait for.
+        timeout = 20 + len(batch) * 0.15
+        result = _post_with_retry(payload, max_retries, timeout)
         vectors.extend(item["embedding"] for item in sorted(result["data"], key=lambda d: d["index"]))
         if on_batch_done:
             on_batch_done(len(vectors))

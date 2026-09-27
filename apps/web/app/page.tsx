@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HeroIllustration } from "@/components/HeroIllustration";
 
 const FEATURES = [
   {
@@ -54,32 +55,37 @@ export default function LandingPage() {
         </nav>
       </header>
 
-      <section className="auth-background">
-        <div className="mx-auto flex max-w-6xl flex-col items-start gap-6 px-6 py-24 text-white sm:py-32">
-          <p className="rounded-full border border-white/20 px-3 py-1 text-xs font-medium text-white/70">
-            Agentic SDLC & codebase intelligence
-          </p>
-          <h1 className="max-w-3xl font-serif text-4xl font-semibold leading-tight sm:text-6xl">
-            Turn a change request into a grounded, reviewable plan.
-          </h1>
-          <p className="max-w-xl text-base leading-relaxed text-white/80 sm:text-lg">
-            Upload your requirements and your real codebase. Describe what needs to change in plain
-            language. Spectrace AI finds the evidence, cites it, and proposes exactly which files
-            need work - nothing ships until a reviewer says so.
-          </p>
-          <div className="flex flex-wrap gap-3 pt-2">
-            <Link
-              href="/register"
-              className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-accent hover:bg-white/90"
-            >
-              Get started free
-            </Link>
-            <Link
-              href="/sign-in"
-              className="rounded-md border border-white/30 px-6 py-3 text-sm font-semibold text-white hover:bg-white/10"
-            >
-              Sign in
-            </Link>
+      <section className="auth-background overflow-hidden">
+        <div className="mx-auto grid max-w-6xl items-center gap-10 px-6 py-24 text-white sm:py-32 lg:grid-cols-2">
+          <div className="flex flex-col items-start gap-6">
+            <p className="rounded-full border border-white/20 px-3 py-1 text-xs font-medium text-white/70">
+              Agentic SDLC & codebase intelligence
+            </p>
+            <h1 className="max-w-xl font-serif text-4xl font-semibold leading-tight sm:text-5xl">
+              Turn a change request into a grounded, reviewable plan.
+            </h1>
+            <p className="max-w-xl text-base leading-relaxed text-white/80 sm:text-lg">
+              Upload your requirements and your real codebase. Describe what needs to change in plain
+              language. Spectrace AI finds the evidence, cites it, and proposes exactly which files
+              need work - nothing ships until a reviewer says so.
+            </p>
+            <div className="flex flex-wrap gap-3 pt-2">
+              <Link
+                href="/register"
+                className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-accent hover:bg-white/90"
+              >
+                Get started free
+              </Link>
+              <Link
+                href="/sign-in"
+                className="rounded-md border border-white/30 px-6 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Sign in
+              </Link>
+            </div>
+          </div>
+          <div className="hidden lg:block">
+            <HeroIllustration />
           </div>
         </div>
       </section>

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { TopNav } from "@/components/TopNav";
 import { api, ApiError, Project, ProjectStatus } from "@/lib/api";
 
@@ -126,12 +126,23 @@ function ProjectMenu({
 }
 
 export default function DashboardPage() {
+  return (
+    <Suspense fallback={null}>
+      <DashboardContent />
+    </Suspense>
+  );
+}
+
+function DashboardContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  // The home page's "+ Create a project" quick action links here with ?create=1 so the form is
+  // already open instead of landing on a plain list with no obvious next step.
+  const [showCreateForm, setShowCreateForm] = useState(() => searchParams.get("create") === "1");
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
 

@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { clearLastProjectId, getLastProjectId } from "@/lib/lastProject";
+import { clearLastProjectId } from "@/lib/lastProject";
 import { applyTheme, getStoredThemePreference, setStoredThemePreference, type ThemePreference } from "@/lib/theme";
+import { useBrdHref } from "@/lib/useBrdHref";
 import { Logo } from "@/components/Logo";
 
 const THEME_CYCLE: ThemePreference[] = ["system", "light", "dark"];
@@ -38,26 +39,7 @@ function ThemeToggle() {
 
 export function TopNav() {
   const router = useRouter();
-  // BRD generation is project-scoped - send the user back into whichever project they were last
-  // working in rather than requiring the link to already be inside a /projects/[id] route.
-  const [brdHref, setBrdHref] = useState("/dashboard");
-
-  useEffect(() => {
-    const lastProjectId = getLastProjectId();
-    if (lastProjectId) {
-      setBrdHref(`/projects/${lastProjectId}/brd`);
-      return;
-    }
-    // Nothing in storage yet (e.g. a fresh browser/session that hasn't opened a specific
-    // project) - fall back to the user's most recent project instead of a dead link to
-    // /dashboard, which does nothing when clicked from the dashboard itself.
-    api
-      .listProjects()
-      .then((projects) => {
-        if (projects[0]) setBrdHref(`/projects/${projects[0].id}/brd`);
-      })
-      .catch(() => {});
-  }, []);
+  const brdHref = useBrdHref();
 
   async function handleSignOut() {
     clearLastProjectId();
@@ -68,7 +50,7 @@ export function TopNav() {
   return (
     <nav className="mb-8 flex items-center justify-between border-b border-ink/10 pb-4 text-sm">
       <div className="flex items-center gap-5">
-        <Link href="/dashboard">
+        <Link href="/">
           <Logo />
         </Link>
         <Link href="/dashboard" className="text-ink/60 hover:text-ink">

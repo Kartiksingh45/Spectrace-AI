@@ -1,5 +1,11 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Logo } from "@/components/Logo";
+import { TopNav } from "@/components/TopNav";
+import { api, User } from "@/lib/api";
+import { useBrdHref } from "@/lib/useBrdHref";
 
 const FEATURES = [
   {
@@ -34,11 +40,13 @@ const STEPS = [
   },
 ];
 
-export default function LandingPage() {
+function MarketingLanding() {
   return (
     <main className="min-h-screen bg-background text-ink">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-        <Logo />
+        <Link href="/">
+          <Logo />
+        </Link>
         <nav className="flex items-center gap-6 text-sm">
           <Link href="/guide" className="text-ink/60 hover:text-ink">
             How it works
@@ -157,4 +165,68 @@ export default function LandingPage() {
       </footer>
     </main>
   );
+}
+
+/** The signed-in landing spot - distinct from the plain "Projects" card grid at /dashboard, this
+ * is a quick-action hub so the logo and "Projects" don't just do the same thing twice. */
+function AuthenticatedHome() {
+  const brdHref = useBrdHref();
+
+  return (
+    <main className="min-h-screen bg-background text-ink">
+      <div className="mx-auto max-w-5xl px-4 py-12">
+        <TopNav />
+      </div>
+
+      <section className="auth-background">
+        <div className="mx-auto max-w-5xl px-6 py-16 text-white sm:py-20">
+          <p className="inline-block rounded-full border border-white/20 px-3 py-1 text-xs font-medium text-white/70">
+            Agentic SDLC & codebase intelligence
+          </p>
+          <h1 className="mt-4 max-w-xl font-serif text-3xl font-semibold leading-tight sm:text-4xl">
+            Welcome back. What do you want to do?
+          </h1>
+
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            <Link
+              href="/dashboard?create=1"
+              className="rounded-lg border border-white/20 bg-white/5 p-5 hover:bg-white/10"
+            >
+              <p className="font-medium">+ Create a project</p>
+              <p className="mt-1 text-sm text-white/70">Start a new project to upload requirements and code into.</p>
+            </Link>
+            <Link href={brdHref} className="rounded-lg border border-white/20 bg-white/5 p-5 hover:bg-white/10">
+              <p className="font-medium">Generate a BRD</p>
+              <p className="mt-1 text-sm text-white/70">Turn plain-language project details into a full BRD.</p>
+            </Link>
+            <Link href="/dashboard" className="rounded-lg border border-white/20 bg-white/5 p-5 hover:bg-white/10">
+              <p className="font-medium">View your projects</p>
+              <p className="mt-1 text-sm text-white/70">See every project's status, documents, and analyses.</p>
+            </Link>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+export default function HomePage() {
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    // Any failure (401, or a transient network/cold-start error) is treated as signed-out rather
+    // than getting stuck on a blank loading screen.
+    api
+      .getCurrentUser()
+      .then(setUser)
+      .catch(() => {})
+      .finally(() => setCheckingAuth(false));
+  }, []);
+
+  if (checkingAuth) {
+    return <main className="min-h-screen bg-background" />;
+  }
+
+  return user ? <AuthenticatedHome /> : <MarketingLanding />;
 }

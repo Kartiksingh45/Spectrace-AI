@@ -54,16 +54,37 @@ export default function LandingPage() {
         </nav>
       </header>
 
-      <section className="auth-background overflow-hidden">
-        <div className="mx-auto grid max-w-6xl items-center gap-10 px-6 py-24 text-white sm:py-32 lg:grid-cols-2">
-          <div className="flex flex-col items-start gap-6">
+      <section className="auth-background relative overflow-hidden">
+        {/* Full-bleed to the right edge of the viewport (not the max-w-6xl text column below),
+            with a left-edge fade so the photo's own background blends into the hero gradient
+            instead of sitting on top of it like a pasted card. Plain <img>, not next/image: this
+            deploys through OpenNext to Cloudflare Workers, which doesn't run Next's built-in
+            image-optimization API. */}
+        <div
+          className="pointer-events-none absolute inset-y-0 right-0 hidden w-[52%] lg:block"
+          style={{
+            maskImage: "linear-gradient(to right, transparent, black 22%)",
+            WebkitMaskImage: "linear-gradient(to right, transparent, black 22%)",
+          }}
+        >
+          <img
+            src="/hero-photo.jpg"
+            alt="A developer at a laptop with a holographic overlay of code and system diagrams"
+            width={1400}
+            height={874}
+            className="h-full w-full object-cover object-left"
+          />
+        </div>
+
+        <div className="relative mx-auto max-w-6xl px-6 py-24 text-white sm:py-32">
+          <div className="flex max-w-xl flex-col items-start gap-6">
             <p className="rounded-full border border-white/20 px-3 py-1 text-xs font-medium text-white/70">
               Agentic SDLC & codebase intelligence
             </p>
-            <h1 className="max-w-xl font-serif text-4xl font-semibold leading-tight sm:text-5xl">
+            <h1 className="font-serif text-4xl font-semibold leading-tight sm:text-5xl">
               Turn a change request into a grounded, reviewable plan.
             </h1>
-            <p className="max-w-xl text-base leading-relaxed text-white/80 sm:text-lg">
+            <p className="text-base leading-relaxed text-white/80 sm:text-lg">
               Upload your requirements and your real codebase. Describe what needs to change in plain
               language. Spectrace AI finds the evidence, cites it, and proposes exactly which files
               need work - nothing ships until a reviewer says so.
@@ -82,17 +103,6 @@ export default function LandingPage() {
                 Sign in
               </Link>
             </div>
-          </div>
-          <div className="hidden lg:block">
-            {/* Plain <img>, not next/image: this deploys through OpenNext to Cloudflare Workers,
-                which doesn't run Next's built-in image-optimization API. */}
-            <img
-              src="/hero-photo.jpg"
-              alt="A developer at a laptop with a holographic overlay of code and system diagrams"
-              width={1400}
-              height={874}
-              className="w-full rounded-xl shadow-2xl shadow-black/40"
-            />
           </div>
         </div>
       </section>

@@ -288,17 +288,23 @@ export default function BrdGeneratorPage() {
   return (
     <main className="mx-auto max-w-2xl px-4 py-12">
       <TopNav />
-      <Link href={`/projects/${projectId}`} className="text-sm text-trace">
-        ← Back to project
-      </Link>
-      <h1 className="mt-2 font-serif text-2xl font-semibold text-ink">BRD generator</h1>
-      <p className="mt-1 text-sm text-ink/60">
-        Fill in a few plain-language details and the LLM expands them into a full Business
-        Requirements Document - scope, stakeholders, functional and non-functional requirements,
-        risks, and success criteria.
-      </p>
 
-      <form onSubmit={handleGenerate} className="mt-6 flex flex-col gap-3">
+      <div className="auth-background -mx-4 rounded-lg px-6 py-10 text-white sm:mx-0">
+        <Link href={`/projects/${projectId}`} className="text-sm text-white/70 hover:text-white">
+          ← Back to project
+        </Link>
+        <p className="mt-4 inline-block rounded-full border border-white/20 px-3 py-1 text-xs font-medium text-white/70">
+          Agentic SDLC & codebase intelligence
+        </p>
+        <h1 className="mt-4 font-serif text-3xl font-semibold leading-tight sm:text-4xl">BRD generator</h1>
+        <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/80 sm:text-base">
+          Fill in a few plain-language details and the LLM expands them into a full Business
+          Requirements Document - scope, stakeholders, functional and non-functional requirements,
+          risks, and success criteria.
+        </p>
+      </div>
+
+      <form onSubmit={handleGenerate} className="mt-8 flex flex-col gap-4 rounded-lg border border-ink/10 bg-background p-6 shadow-lg">
         <label className="flex flex-col gap-1 text-sm">
           Project name
           <input
@@ -359,7 +365,7 @@ export default function BrdGeneratorPage() {
         <button
           type="submit"
           disabled={generating}
-          className="self-start rounded-md bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+          className="mt-2 self-start rounded-md bg-accent px-6 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
         >
           {generating ? "Generating…" : "Generate BRD"}
         </button>

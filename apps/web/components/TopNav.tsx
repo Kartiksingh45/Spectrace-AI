@@ -44,7 +44,19 @@ export function TopNav() {
 
   useEffect(() => {
     const lastProjectId = getLastProjectId();
-    if (lastProjectId) setBrdHref(`/projects/${lastProjectId}/brd`);
+    if (lastProjectId) {
+      setBrdHref(`/projects/${lastProjectId}/brd`);
+      return;
+    }
+    // Nothing in storage yet (e.g. a fresh browser/session that hasn't opened a specific
+    // project) - fall back to the user's most recent project instead of a dead link to
+    // /dashboard, which does nothing when clicked from the dashboard itself.
+    api
+      .listProjects()
+      .then((projects) => {
+        if (projects[0]) setBrdHref(`/projects/${projects[0].id}/brd`);
+      })
+      .catch(() => {});
   }, []);
 
   async function handleSignOut() {

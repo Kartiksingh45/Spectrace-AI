@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.models.agent_run import AgentRun
 from app.models.agent_step import AgentStep
 from app.models.approval import Approval
+from app.models.brd_document import BrdDocument
 from app.models.change_request import ChangeRequest
 from app.models.content_chunk import ContentChunk
 from app.models.document import Document
@@ -105,6 +106,7 @@ def delete_project(
         {"previous_version_id": None}, synchronize_session=False
     )
     db.query(Document).filter(Document.project_id == project.id).delete(synchronize_session=False)
+    db.query(BrdDocument).filter(BrdDocument.project_id == project.id).delete(synchronize_session=False)
     db.query(ProjectMember).filter(ProjectMember.project_id == project.id).delete(synchronize_session=False)
     db.delete(project)
     db.commit()

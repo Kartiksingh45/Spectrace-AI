@@ -64,3 +64,11 @@ def get_agent_overrides() -> dict:
     fake model so the agent's tool-selection loop is deterministic and offline.
     """
     return {}
+
+
+def get_brd_generator():
+    """The real Gemini-backed generator by default; tests override this dependency to inject a
+    deterministic fake so BRD generation is offline and free to run in the test suite."""
+    from app.services.brd_generator import generate_brd
+
+    return generate_brd

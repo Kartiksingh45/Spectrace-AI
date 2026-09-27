@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, documents, plans, projects, requests, search
+from app.api.routes import auth, brd, documents, plans, projects, requests, search
 from app.core.config import settings
 
 # Structured run/step logging (agent_runner, tools, ingestion) is emitted at INFO - without this,
@@ -30,6 +30,7 @@ app.include_router(documents.router)
 app.include_router(search.router)
 app.include_router(requests.router)
 app.include_router(plans.router)
+app.include_router(brd.router)
 
 
 @app.get("/health")

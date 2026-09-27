@@ -176,6 +176,42 @@ export type Run = {
 
 export type Decision = "approved" | "edit_approved" | "rejected" | "regenerate_requested";
 
+export type BrdInput = {
+  project_name: string;
+  background: string;
+  objectives: string;
+  target_users: string;
+  key_features: string;
+  constraints?: string | null;
+};
+
+export type BrdRequirement = {
+  description: string;
+  priority: "must_have" | "should_have" | "could_have" | "wont_have";
+};
+
+export type GeneratedBrd = {
+  executive_summary: string;
+  business_objectives: string[];
+  in_scope: string[];
+  out_of_scope: string[];
+  stakeholders: string[];
+  functional_requirements: BrdRequirement[];
+  non_functional_requirements: BrdRequirement[];
+  assumptions: string[];
+  constraints: string[];
+  risks: string[];
+  success_criteria: string[];
+};
+
+export type BrdDocument = {
+  id: string;
+  project_id: string;
+  inputs: BrdInput;
+  content: GeneratedBrd;
+  created_at: string;
+};
+
 export const api = {
   runEventsUrl: (requestId: string) => `${API_URL}/requests/${requestId}/events`,
   register: (email: string, password: string) =>
@@ -237,4 +273,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ decision, feedback: feedback ?? null, final_content: finalContent ?? null }),
     }),
+  generateBrd: (projectId: string, payload: BrdInput) =>
+    request<BrdDocument>(`/projects/${projectId}/brd`, { method: "POST", body: JSON.stringify(payload) }),
+  listBrdDocuments: (projectId: string) => request<BrdDocument[]>(`/projects/${projectId}/brd`),
+  deleteBrdDocument: (projectId: string, brdId: string) =>
+    request<void>(`/projects/${projectId}/brd/${brdId}`, { method: "DELETE" }),
 };

@@ -286,10 +286,10 @@ export default function BrdGeneratorPage() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-12">
+    <main className="mx-auto max-w-5xl px-4 py-12">
       <TopNav />
-
-      <div className="auth-background -mx-4 rounded-lg px-6 py-10 text-white sm:mx-0">
+      <div className="mx-auto max-w-2xl">
+      <div className="auth-background rounded-lg px-6 py-10 text-white">
         <Link href={`/projects/${projectId}`} className="text-sm text-white/70 hover:text-white">
           ← Back to project
         </Link>
@@ -432,6 +432,7 @@ export default function BrdGeneratorPage() {
           </ul>
         )}
       </section>
+      </div>
     </main>
   );
 }

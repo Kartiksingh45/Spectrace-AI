@@ -125,7 +125,7 @@ export default function GuidePage() {
 
   if (checkingAuth) {
     return (
-      <main className="mx-auto max-w-2xl px-4 py-12">
+      <main className="mx-auto max-w-5xl px-4 py-12">
         <TopNav />
         <p className="text-sm text-ink/60">Loading…</p>
       </main>
@@ -133,38 +133,40 @@ export default function GuidePage() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-12">
+    <main className="mx-auto max-w-5xl px-4 py-12">
       <TopNav />
-      <h1 className="mb-2 font-serif text-2xl font-semibold text-ink">Guide</h1>
-      <p className="mb-8 text-sm text-ink/60">
-        A detailed walkthrough of how Spectrace AI's workflow fits together, end to end.
-      </p>
+      <div className="mx-auto max-w-2xl">
+        <h1 className="mb-2 font-serif text-2xl font-semibold text-ink">Guide</h1>
+        <p className="mb-8 text-sm text-ink/60">
+          A detailed walkthrough of how Spectrace AI's workflow fits together, end to end.
+        </p>
 
-      <ol className="flex flex-col gap-5">
-        {STEPS.map((step, i) => (
-          <li
-            key={step.title}
-            className="rounded-lg border border-ink/10 bg-surface p-5 shadow-sm transition-colors hover:border-trace"
-          >
-            <div className="mb-2 flex items-center gap-3">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-trace/15 text-xs font-semibold text-trace">
-                {i + 1}
-              </span>
-              <h2 className="text-sm font-semibold text-ink">{step.title.replace(/^\d+\.\s*/, "")}</h2>
-            </div>
-            <p className="text-sm text-ink/70">{step.body}</p>
-            {step.points && (
-              <ul className="mt-2 list-disc pl-5 text-sm text-ink/70">
-                {step.points.map((point, j) => (
-                  <li key={j} className="mt-1">
-                    {point}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </li>
-        ))}
-      </ol>
+        <ol className="flex flex-col gap-5">
+          {STEPS.map((step, i) => (
+            <li
+              key={step.title}
+              className="rounded-lg border border-ink/10 bg-surface p-5 shadow-sm transition-colors hover:border-trace"
+            >
+              <div className="mb-2 flex items-center gap-3">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-trace/15 text-xs font-semibold text-trace">
+                  {i + 1}
+                </span>
+                <h2 className="text-sm font-semibold text-ink">{step.title.replace(/^\d+\.\s*/, "")}</h2>
+              </div>
+              <p className="text-sm text-ink/70">{step.body}</p>
+              {step.points && (
+                <ul className="mt-2 list-disc pl-5 text-sm text-ink/70">
+                  {step.points.map((point, j) => (
+                    <li key={j} className="mt-1">
+                      {point}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ol>
+      </div>
     </main>
   );
 }

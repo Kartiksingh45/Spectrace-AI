@@ -11,8 +11,7 @@ See [`Spectrace_AI_BRD.docx`](Spectrace_AI_BRD.docx) for the full Business Requi
 
 ```
 Next.js (apps/web)  →  FastAPI (apps/api)  →  Postgres + pgvector (cloud: Neon or Supabase)
-                                            →  Gemini (LLM)
-                                            →  sentence-transformers (embeddings)
+                                            →  Gemini (LLM + embeddings)
 ```
 
 | Layer          | Technology                                  |
@@ -23,7 +22,7 @@ Next.js (apps/web)  →  FastAPI (apps/api)  →  Postgres + pgvector (cloud: Ne
 | Vector search  | pgvector extension on the same Postgres      |
 | Agent          | LangGraph                                    |
 | LLM            | Gemini                                       |
-| Embeddings     | sentence-transformers (local, no API key)    |
+| Embeddings     | Gemini's embedding API (`gemini-embedding-001`) |
 
 The app talks to Postgres directly through SQLAlchemy/Alembic — no vendor BaaS SDK (auth, storage
 client, etc.) is used, even when the database is hosted on Supabase. This is a deliberate constraint from
@@ -161,12 +160,13 @@ then create a project from the dashboard.
 | `JWT_ALGORITHM`                | JWT signing algorithm (default `HS256`)                          |
 | `ACCESS_TOKEN_EXPIRE_MINUTES`  | Session lifetime in minutes                                      |
 | `FRONTEND_ORIGIN`               | Origin allowed by CORS (the Next.js dev/prod URL)                |
-| `GEMINI_API_KEY`               | Gemini API key — powers classification, tool selection, and plan generation |
+| `GEMINI_API_KEY`               | Gemini API key — powers classification, tool selection, plan generation, and embeddings |
 | `GEMINI_MODEL_NAME`            | Gemini model for the agent (default `gemini-3.5-flash-lite`)       |
 | `AGENT_MAX_STEPS`              | Cap on tool-calling turns before forcing an insufficient-evidence fallback |
 | `AGENT_REVIEW_MAX_RETRIES`     | How many times a plan can be bounced back for ungrounded citations before falling back |
-| `EMBEDDING_MODEL_NAME`         | sentence-transformers model used to embed chunks (default `all-MiniLM-L6-v2`) |
-| `EMBEDDING_DIMENSIONS`        | Must match the model's output dimension (384 for the default)    |
+| `EMBEDDING_MODEL_NAME`         | Gemini embedding model used to embed chunks (default `models/gemini-embedding-001`) |
+| `EMBEDDING_DIMENSIONS`        | Truncated output width via Gemini's `output_dimensionality` (384 by default) |
+| `ENABLE_RERANKER`              | Cross-encoder reranking pass over search results (default `true`; needs `sentence-transformers` installed, not a default dependency) |
 | `CHUNK_SIZE` / `CHUNK_OVERLAP` | Character-based chunking window for requirement docs and code    |
 | `MAX_DOCUMENT_SIZE_MB`         | Upload size limit for requirement documents                       |
 | `MAX_ZIP_FILES` / `MAX_ZIP_UNCOMPRESSED_MB` | Safety limits on uploaded code archives              |
@@ -225,16 +225,18 @@ live paid account, so this is "ready to deploy", not "currently deployed":
   time, so setting it as a Cloudflare dashboard/Workers variable afterward has no effect. Use
   `npm run cf:preview` first to test locally against Cloudflare's runtime (via `workerd`) before
   deploying for real. The backend still can't run on Cloudflare (no support for a long-running
-  Python process with `sentence-transformers`/`psycopg`/etc.) - pair this with the Render setup
-  below, or any other Python host.
+  Python process with `psycopg`/etc.) - pair this with the Render setup below, or any other
+  Python host.
 - **API → a Python host (Render):** `apps/api/render.yaml` is a ready-to-use Render Blueprint
   (`apps/api/Dockerfile` runs `alembic upgrade head` then `uvicorn` on start) - set the
   `DATABASE_URL`, `JWT_SECRET`, `FRONTEND_ORIGIN`, and `GEMINI_API_KEY` secrets in the Render
   dashboard. Any other Docker-friendly host works the same way (Fly.io, Railway, a VM).
-  **Memory:** Render's free tier caps a service at 512MB RAM, which is tight for a Python process
-  that loads PyTorch plus two sentence-transformers models (the embedding model, always on, and
-  the optional cross-encoder reranker) - observed in practice to get OOM-killed with both loaded.
-  Set `ENABLE_RERANKER=false` to skip loading the second model; if it's still tight, the real fix
-  is a plan with more memory, not further trimming (the embedding model itself isn't optional).
+  **Memory:** an earlier version of this app embedded locally via a PyTorch/sentence-transformers
+  model, which repeatedly got the deployed process OOM-killed on Render's free 512MB tier (a
+  no-card-required host is worth keeping, so the fix was to shrink the app, not upgrade the
+  host) - embeddings now go through Gemini's own API instead (`app/services/embeddings.py`),
+  removing PyTorch entirely. The cross-encoder reranker (optional; `ENABLE_RERANKER`) still uses
+  `sentence-transformers` if enabled, but it's no longer a default dependency
+  (`requirements.txt`) - install it separately if you want it loaded.
 - **Database:** the existing free-tier Neon/Supabase Postgres already in use for development works
   unchanged in production - just point `DATABASE_URL` at it.

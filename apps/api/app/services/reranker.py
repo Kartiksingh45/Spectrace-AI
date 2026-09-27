@@ -2,6 +2,10 @@
 candidate pool. Unlike the embedding similarity used for initial retrieval (which scores the
 query and each chunk independently, then compares vectors), a cross-encoder scores the query and
 a candidate TOGETHER, which can catch relevance a purely independent comparison misses.
+
+Needs `sentence-transformers` installed (no longer a default dependency - see requirements.txt);
+without it this degrades gracefully (rerank_scores returns None, caller keeps its existing order)
+rather than breaking retrieval - see ENABLE_RERANKER in .env.example.
 """
 import logging
 from functools import lru_cache

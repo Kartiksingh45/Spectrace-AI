@@ -14,7 +14,7 @@ pytest==8.3.4
 httpx==0.28.1
 pgvector==0.3.6
 pypdf==5.1.0
-sentence-transformers==3.3.1
+google-genai==2.23.0
 langgraph==1.2.11
 langchain-core==1.6.3
 langchain-google-genai==4.4.0

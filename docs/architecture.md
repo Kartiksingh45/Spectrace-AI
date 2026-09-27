@@ -21,13 +21,12 @@ flowchart LR
     end
 
     subgraph External
-        Gemini["Gemini\n(classification, tool selection, plan generation)"]
-        ST["sentence-transformers\n(local embeddings, no API key)"]
+        Gemini["Gemini\n(classification, tool selection, plan generation, embeddings)"]
     end
 
     Web -- "HTTPS + session cookie" --> API
     API --> Ingest
-    Ingest --> ST
+    Ingest --> Gemini
     Ingest --> PG
     Ingest --> Vec
     API --> Agent

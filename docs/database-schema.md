@@ -66,7 +66,7 @@ this table (`app/api/deps.py::get_membership`) so one project can never retrieve
 | document_id | uuid, FK → documents.id | |
 | content_type | enum `content_kind` | matches the parent document's kind |
 | text | text | the chunk itself |
-| embedding | `vector(384)` (pgvector) | dimension from `EMBEDDING_DIMENSIONS`; default model is `all-MiniLM-L6-v2` |
+| embedding | `vector(384)` (pgvector) | dimension from `EMBEDDING_DIMENSIONS`; Gemini's `gemini-embedding-001`, truncated via `output_dimensionality` |
 | source_metadata | jsonb | requirement chunks: `{filename, page_number}`; code chunks: `{file_path, symbol, start_line, end_line, language}` |
 | created_at | timestamptz | |
 

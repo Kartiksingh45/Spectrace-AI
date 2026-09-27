@@ -69,11 +69,16 @@ export type User = {
   created_at: string;
 };
 
+export type ProjectStatus = "draft" | "in_progress" | "complete";
+
 export type Project = {
   id: string;
   name: string;
   owner_id: string;
   created_at: string;
+  updated_at: string;
+  status: ProjectStatus;
+  requirement_count: number | null;
 };
 
 export type DocumentStatus = "uploaded" | "processing" | "ready" | "failed";

@@ -12,13 +12,62 @@ from app.models.brd_document import BrdDocument
 from app.models.change_request import ChangeRequest
 from app.models.content_chunk import ContentChunk
 from app.models.document import Document
+from app.models.enums import ChangeRequestStatus
 from app.models.generated_plan import GeneratedPlan
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
-from app.schemas.project import ProjectCreate, ProjectOut, ProjectUpdate
+from app.schemas.project import ProjectCreate, ProjectOut, ProjectStatus, ProjectUpdate
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+def _project_status_and_requirement_count(db: Session, project_id: uuid.UUID) -> tuple[ProjectStatus, int | None]:
+    """Derived from what's actually been done in the project - not a field anyone sets by hand,
+    which would just go stale. "complete" once any change request has an approved plan;
+    "in_progress" once there's any change request or uploaded document; "draft" otherwise.
+    requirement_count comes from the most recently generated BRD, if any."""
+    has_approved = (
+        db.query(ChangeRequest)
+        .filter(ChangeRequest.project_id == project_id, ChangeRequest.status == ChangeRequestStatus.approved)
+        .first()
+        is not None
+    )
+    if has_approved:
+        proj_status: ProjectStatus = "complete"
+    else:
+        has_activity = (
+            db.query(ChangeRequest).filter(ChangeRequest.project_id == project_id).first() is not None
+            or db.query(Document).filter(Document.project_id == project_id).first() is not None
+        )
+        proj_status = "in_progress" if has_activity else "draft"
+
+    latest_brd = (
+        db.query(BrdDocument)
+        .filter(BrdDocument.project_id == project_id)
+        .order_by(BrdDocument.created_at.desc())
+        .first()
+    )
+    requirement_count = None
+    if latest_brd:
+        requirement_count = len(latest_brd.content.get("functional_requirements", [])) + len(
+            latest_brd.content.get("non_functional_requirements", [])
+        )
+
+    return proj_status, requirement_count
+
+
+def _to_project_out(db: Session, project: Project) -> ProjectOut:
+    proj_status, requirement_count = _project_status_and_requirement_count(db, project.id)
+    return ProjectOut(
+        id=project.id,
+        name=project.name,
+        owner_id=project.owner_id,
+        created_at=project.created_at,
+        updated_at=project.updated_at,
+        status=proj_status,
+        requirement_count=requirement_count,
+    )
 
 
 def _get_owned_project_or_404(db: Session, project_id: uuid.UUID, user: User) -> Project:
@@ -32,20 +81,21 @@ def _get_owned_project_or_404(db: Session, project_id: uuid.UUID, user: User) ->
 
 
 @router.get("", response_model=list[ProjectOut])
-def list_projects(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[Project]:
-    return (
+def list_projects(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[ProjectOut]:
+    projects = (
         db.query(Project)
         .join(ProjectMember, ProjectMember.project_id == Project.id)
         .filter(ProjectMember.user_id == user.id)
         .order_by(Project.created_at.desc())
         .all()
     )
+    return [_to_project_out(db, project) for project in projects]
 
 
 @router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
 def create_project(
     payload: ProjectCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)
-) -> Project:
+) -> ProjectOut:
     project = Project(name=payload.name, owner_id=user.id)
     db.add(project)
     db.flush()
@@ -53,17 +103,17 @@ def create_project(
     db.add(ProjectMember(project_id=project.id, user_id=user.id))
     db.commit()
     db.refresh(project)
-    return project
+    return _to_project_out(db, project)
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
 def get_project(
     project_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)
-) -> Project:
+) -> ProjectOut:
     project = db.get(Project, project_id)
     if not project or not get_membership(db, project_id, user.id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    return project
+    return _to_project_out(db, project)
 
 
 @router.patch("/{project_id}", response_model=ProjectOut)
@@ -72,12 +122,12 @@ def update_project(
     payload: ProjectUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> Project:
+) -> ProjectOut:
     project = _get_owned_project_or_404(db, project_id, user)
     project.name = payload.name
     db.commit()
     db.refresh(project)
-    return project
+    return _to_project_out(db, project)
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)

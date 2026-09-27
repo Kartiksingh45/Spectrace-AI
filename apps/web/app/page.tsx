@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { HeroIllustration } from "@/components/HeroIllustration";
 
 const FEATURES = [
   {
@@ -85,7 +84,15 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="hidden lg:block">
-            <HeroIllustration />
+            {/* Plain <img>, not next/image: this deploys through OpenNext to Cloudflare Workers,
+                which doesn't run Next's built-in image-optimization API. */}
+            <img
+              src="/hero-photo.jpg"
+              alt="A developer at a laptop with a holographic overlay of code and system diagrams"
+              width={1400}
+              height={874}
+              className="w-full rounded-xl shadow-2xl shadow-black/40"
+            />
           </div>
         </div>
       </section>

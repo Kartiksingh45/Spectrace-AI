@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/Logo";
-import { TopNav } from "@/components/TopNav";
 import { api, User } from "@/lib/api";
 import { useBrdHref } from "@/lib/useBrdHref";
 
@@ -40,11 +39,29 @@ const STEPS = [
   },
 ];
 
-function MarketingLanding() {
-  // Signed-out visitors can still see the full nav as a preview of the site's structure -
-  // clicking any of these already redirects to /sign-in on its own (each page's own 401 check),
-  // so nothing extra needs to be done to gate them.
+export default function HomePage() {
   const brdHref = useBrdHref();
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    // Any failure (401, or a transient network/cold-start error) is treated as signed-out rather
+    // than getting stuck on a blank loading screen.
+    api
+      .getCurrentUser()
+      .then(setUser)
+      .catch(() => {})
+      .finally(() => setCheckingAuth(false));
+  }, []);
+
+  async function handleSignOut() {
+    await api.logout().catch(() => {});
+    setUser(null);
+  }
+
+  if (checkingAuth) {
+    return <main className="min-h-screen bg-background" />;
+  }
 
   return (
     <main className="min-h-screen bg-background text-ink">
@@ -65,15 +82,23 @@ function MarketingLanding() {
           <Link href="/profile" className="text-ink/60 hover:text-ink">
             My Profile
           </Link>
-          <Link href="/sign-in" className="text-ink/60 hover:text-ink">
-            Sign in
-          </Link>
-          <Link
-            href="/register"
-            className="rounded-md bg-accent px-4 py-2 font-medium text-white hover:opacity-90"
-          >
-            Get started free
-          </Link>
+          {user ? (
+            <button onClick={handleSignOut} className="text-ink/60 hover:text-ink">
+              Sign out
+            </button>
+          ) : (
+            <>
+              <Link href="/sign-in" className="text-ink/60 hover:text-ink">
+                Sign in
+              </Link>
+              <Link
+                href="/register"
+                className="rounded-md bg-accent px-4 py-2 font-medium text-white hover:opacity-90"
+              >
+                Get started free
+              </Link>
+            </>
+          )}
         </nav>
       </header>
 
@@ -105,7 +130,7 @@ function MarketingLanding() {
               Agentic SDLC & codebase intelligence
             </p>
             <h1 className="font-serif text-4xl font-semibold leading-tight sm:text-5xl">
-              Turn a change request into a grounded, reviewable plan.
+              {user ? "Welcome back. What do you want to do?" : "Turn a change request into a grounded, reviewable plan."}
             </h1>
             <p className="text-base leading-relaxed text-white/80 sm:text-lg">
               Upload your requirements and your real codebase. Describe what needs to change in plain
@@ -113,18 +138,37 @@ function MarketingLanding() {
               need work - nothing ships until a reviewer says so.
             </p>
             <div className="flex flex-wrap gap-3 pt-2">
-              <Link
-                href="/register"
-                className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-accent hover:bg-white/90"
-              >
-                Get started free
-              </Link>
-              <Link
-                href="/sign-in"
-                className="rounded-md border border-white/30 px-6 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Sign in
-              </Link>
+              {user ? (
+                <>
+                  <Link
+                    href="/dashboard?create=1"
+                    className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-accent hover:bg-white/90"
+                  >
+                    + Create a project
+                  </Link>
+                  <Link
+                    href={brdHref}
+                    className="rounded-md border border-white/30 px-6 py-3 text-sm font-semibold text-white hover:bg-white/10"
+                  >
+                    Generate a BRD
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Link
+                    href="/register"
+                    className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-accent hover:bg-white/90"
+                  >
+                    Get started free
+                  </Link>
+                  <Link
+                    href="/sign-in"
+                    className="rounded-md border border-white/30 px-6 py-3 text-sm font-semibold text-white hover:bg-white/10"
+                  >
+                    Sign in
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -163,13 +207,13 @@ function MarketingLanding() {
       <section className="auth-background">
         <div className="mx-auto flex max-w-6xl flex-col items-start gap-5 px-6 py-16 text-white">
           <h2 className="font-serif text-2xl font-semibold sm:text-3xl">
-            Ready to see it work on your own codebase?
+            {user ? "Jump back into your projects." : "Ready to see it work on your own codebase?"}
           </h2>
           <Link
-            href="/register"
+            href={user ? "/dashboard" : "/register"}
             className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-accent hover:bg-white/90"
           >
-            Get started free
+            {user ? "View your projects" : "Get started free"}
           </Link>
         </div>
       </section>
@@ -179,68 +223,4 @@ function MarketingLanding() {
       </footer>
     </main>
   );
-}
-
-/** The signed-in landing spot - distinct from the plain "Projects" card grid at /dashboard, this
- * is a quick-action hub so the logo and "Projects" don't just do the same thing twice. */
-function AuthenticatedHome() {
-  const brdHref = useBrdHref();
-
-  return (
-    <main className="min-h-screen bg-background text-ink">
-      <div className="mx-auto max-w-5xl px-4 py-12">
-        <TopNav />
-      </div>
-
-      <section className="auth-background">
-        <div className="mx-auto max-w-5xl px-6 py-16 text-white sm:py-20">
-          <p className="inline-block rounded-full border border-white/20 px-3 py-1 text-xs font-medium text-white/70">
-            Agentic SDLC & codebase intelligence
-          </p>
-          <h1 className="mt-4 max-w-xl font-serif text-3xl font-semibold leading-tight sm:text-4xl">
-            Welcome back. What do you want to do?
-          </h1>
-
-          <div className="mt-8 grid gap-4 sm:grid-cols-3">
-            <Link
-              href="/dashboard?create=1"
-              className="rounded-lg border border-white/20 bg-white/5 p-5 hover:bg-white/10"
-            >
-              <p className="font-medium">+ Create a project</p>
-              <p className="mt-1 text-sm text-white/70">Start a new project to upload requirements and code into.</p>
-            </Link>
-            <Link href={brdHref} className="rounded-lg border border-white/20 bg-white/5 p-5 hover:bg-white/10">
-              <p className="font-medium">Generate a BRD</p>
-              <p className="mt-1 text-sm text-white/70">Turn plain-language project details into a full BRD.</p>
-            </Link>
-            <Link href="/dashboard" className="rounded-lg border border-white/20 bg-white/5 p-5 hover:bg-white/10">
-              <p className="font-medium">View your projects</p>
-              <p className="mt-1 text-sm text-white/70">See every project's status, documents, and analyses.</p>
-            </Link>
-          </div>
-        </div>
-      </section>
-    </main>
-  );
-}
-
-export default function HomePage() {
-  const [checkingAuth, setCheckingAuth] = useState(true);
-  const [user, setUser] = useState<User | null>(null);
-
-  useEffect(() => {
-    // Any failure (401, or a transient network/cold-start error) is treated as signed-out rather
-    // than getting stuck on a blank loading screen.
-    api
-      .getCurrentUser()
-      .then(setUser)
-      .catch(() => {})
-      .finally(() => setCheckingAuth(false));
-  }, []);
-
-  if (checkingAuth) {
-    return <main className="min-h-screen bg-background" />;
-  }
-
-  return user ? <AuthenticatedHome /> : <MarketingLanding />;
 }

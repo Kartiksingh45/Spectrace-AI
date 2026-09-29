@@ -57,7 +57,13 @@ def _post_with_retry(payload: dict, max_retries: int, timeout: float) -> dict:
             return response.json()
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code != 429 or attempt == max_retries:
-                raise
+                # Jina's response body names the actual rejection reason (bad param, input too
+                # long, etc.) but raise_for_status()'s own message omits it entirely - without
+                # this, a non-429 failure shows up in logs as a bare "400 Bad Request" with no way
+                # to tell what was wrong with the request short of reproducing it.
+                raise httpx.HTTPStatusError(
+                    f"{exc}: {exc.response.text}", request=exc.request, response=exc.response
+                ) from exc
             delay = _BASE_RETRY_DELAY_SECONDS * (2**attempt)
             logger.warning(
                 "Jina embedding quota hit (429), retrying in %ss (attempt %s/%s)",

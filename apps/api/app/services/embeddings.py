@@ -100,6 +100,12 @@ def embed_batch(
             "normalized": True,
             "embedding_type": "float",
             "input": batch,
+            # A single chunk over Jina's 8194-token cap (e.g. an unusually large class or
+            # function - chunk_python_code's AST branch keeps a top-level node whole with no
+            # size cap of its own) otherwise 400s the *entire* batch outright. Truncating that
+            # one oversized chunk's embedding is a better trade than failing the whole codebase's
+            # ingestion over it.
+            "truncate": True,
         }
         # Scales with batch size - a 500-text bulk-ingestion batch takes proportionally longer for
         # Jina to compute server-side than the single-text interactive path needs to wait for.

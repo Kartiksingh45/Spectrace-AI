@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { AuthHeader } from "@/components/AuthHeader";
 import { AuthIntroPanel } from "@/components/AuthIntroPanel";
 import { api, ApiError } from "@/lib/api";
 
@@ -28,7 +29,9 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="auth-background flex min-h-screen flex-col lg:flex-row">
+    <main className="min-h-screen bg-background">
+      <AuthHeader />
+      <div className="auth-background flex flex-col lg:flex-row">
       <AuthIntroPanel />
       <div className="flex flex-1 items-center justify-center px-4 py-16">
         <div className="w-full max-w-sm flex flex-col gap-6 rounded-xl border border-ink/10 bg-background p-8 shadow-lg">
@@ -77,6 +80,7 @@ export default function RegisterPage() {
             </Link>
           </p>
         </div>
+      </div>
       </div>
     </main>
   );

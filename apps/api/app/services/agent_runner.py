@@ -244,6 +244,28 @@ def _invoke_and_sync(
     return run
 
 
+def run_in_background(
+    session_factory, fn, run_id: uuid.UUID, change_request_id: uuid.UUID, *args: Any, **kwargs: Any
+) -> None:
+    """Entry point FastAPI's BackgroundTasks should call instead of execute_run/execute_resume_*
+    directly. A BackgroundTask runs after the triggering request's own Depends(get_db) session has
+    already been closed (FastAPI tears down yield-dependencies right after the response, before
+    background tasks fire) - closing a session expunges every object it was tracking, so mutating
+    `run.status`/`change_request.status` on those now-detached instances and committing was a
+    silent no-op: only a freshly db.add()-ed row (like a GeneratedPlan) actually persisted. A run
+    could finish, genuinely generate a plan, and still show "running" forever. Opening a fresh
+    session here and re-fetching `run`/`change_request` by id avoids reusing anything from the
+    request's own session.
+    """
+    db = session_factory()
+    try:
+        run = db.get(AgentRun, run_id)
+        change_request = db.get(ChangeRequest, change_request_id)
+        fn(db, run, change_request, *args, **kwargs)
+    finally:
+        db.close()
+
+
 def start_run(db: Session, change_request: ChangeRequest, checkpointer, **graph_kwargs) -> AgentRun:
     """Creates the run row and returns immediately - the graph itself is NOT executed here.
     Callers that need the run to actually happen must follow this with `execute_run` (directly,

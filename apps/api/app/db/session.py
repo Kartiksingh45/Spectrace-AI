@@ -21,6 +21,14 @@ _CONNECT_RETRY_ATTEMPTS = 5
 _CONNECT_RETRY_DELAY_SECONDS = 1.0
 
 
+def get_session_factory():
+    """Overridable the same way as get_db (via app.dependency_overrides) - lets a BackgroundTask
+    open its own session bound to the right engine (the real one in production, the test engine
+    under TestClient) instead of hardcoding a direct SessionLocal() call that tests couldn't swap
+    out."""
+    return SessionLocal
+
+
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.agent.checkpointer import get_checkpointer
 from app.api.deps import get_agent_overrides, get_current_user, get_membership, require_project_member
-from app.db.session import get_db
+from app.db.session import get_db, get_session_factory
 from app.models.agent_run import AgentRun
 from app.models.agent_step import AgentStep
 from app.models.change_request import ChangeRequest
@@ -24,7 +24,13 @@ from app.schemas.agent import (
     RunOut,
     StepOut,
 )
-from app.services.agent_runner import execute_resume_clarification, execute_run, prepare_resume, start_run
+from app.services.agent_runner import (
+    execute_resume_clarification,
+    execute_run,
+    prepare_resume,
+    run_in_background,
+    start_run,
+)
 
 router = APIRouter(tags=["requests"])
 
@@ -148,6 +154,7 @@ def analyse_request(
     user: User = Depends(get_current_user),
     checkpointer=Depends(get_checkpointer),
     agent_overrides: dict = Depends(get_agent_overrides),
+    session_factory=Depends(get_session_factory),
 ) -> RunOut:
     change_request = _get_change_request_for_member(db, request_id, user)
 
@@ -168,7 +175,9 @@ def analyse_request(
     # take over a minute, longer than many hosts' proxy timeout (e.g. Render's ~60s), which would
     # otherwise kill the connection mid-run. The frontend polls GET /runs/{id} (and/or the SSE
     # /requests/{id}/events stream) for progress and the eventual result.
-    background_tasks.add_task(execute_run, db, run, change_request, checkpointer, **agent_overrides)
+    background_tasks.add_task(
+        run_in_background, session_factory, execute_run, run.id, change_request.id, checkpointer, **agent_overrides
+    )
     return _run_to_out(db, run)
 
 
@@ -248,6 +257,7 @@ def answer_clarification(
     user: User = Depends(get_current_user),
     checkpointer=Depends(get_checkpointer),
     agent_overrides: dict = Depends(get_agent_overrides),
+    session_factory=Depends(get_session_factory),
 ) -> RunOut:
     run, change_request = _get_run_for_member(db, run_id, user)
     if run.status != AgentRunStatus.awaiting_clarification:
@@ -255,6 +265,13 @@ def answer_clarification(
 
     prepare_resume(db, run)
     background_tasks.add_task(
-        execute_resume_clarification, db, run, change_request, payload.answer, checkpointer, **agent_overrides
+        run_in_background,
+        session_factory,
+        execute_resume_clarification,
+        run.id,
+        change_request.id,
+        payload.answer,
+        checkpointer,
+        **agent_overrides,
     )
     return _run_to_out(db, run)

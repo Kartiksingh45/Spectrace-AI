@@ -14,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.config import settings
 from app.db.base import Base
-from app.db.session import get_db
+from app.db.session import get_db, get_session_factory
 from app.main import app
 
 
@@ -68,7 +68,15 @@ def client(db_session):
     def override_get_db():
         yield db_session
 
+    # A background task (see app.services.agent_runner.run_in_background) opens its own session
+    # via this factory rather than reusing the request's db_session - bind it to the same engine
+    # (StaticPool keeps it the same in-memory SQLite database) so a background task sees whatever
+    # the request already committed, without reusing db_session itself and risking a test closing
+    # out from under a later assertion in the same test.
+    TestingSessionLocal = sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False)
+
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_session_factory] = lambda: TestingSessionLocal
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

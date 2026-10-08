@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     chunk_size: int = 1000
     chunk_overlap: int = 150
 
+    # Forgot-password emails, sent via Resend's HTTP API (free tier, no card required - see
+    # https://resend.com). Left blank, forgot-password silently no-ops (still returns 204, since
+    # that response must never reveal whether an email exists either way) rather than erroring.
+    resend_api_key: str = ""
+    resend_from_email: str = "onboarding@resend.dev"
+    password_reset_token_expire_minutes: int = 30
+
     max_document_size_mb: int = 20
     max_zip_files: int = 2000
     max_zip_uncompressed_mb: int = 200

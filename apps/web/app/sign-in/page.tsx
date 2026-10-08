@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { AuthIntroPanel } from "@/components/AuthIntroPanel";
 import { api, ApiError } from "@/lib/api";
 import { getLastProjectId } from "@/lib/lastProject";
@@ -13,7 +13,17 @@ function destinationAfterSignIn(): string {
 }
 
 export default function SignInPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignInContent />
+    </Suspense>
+  );
+}
+
+function SignInContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const justReset = searchParams.get("reset") === "1";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +59,11 @@ export default function SignInPage() {
             <h1 className="font-serif text-2xl font-semibold text-ink">Sign in</h1>
             <p className="mt-1 text-sm text-ink/60">Access your Spectrace AI projects.</p>
           </div>
+          {justReset && (
+            <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
+              Password reset - sign in with your new password.
+            </p>
+          )}
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <label className="flex flex-col gap-1 text-sm">
               Email
@@ -62,7 +77,12 @@ export default function SignInPage() {
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              Password
+              <div className="flex items-center justify-between">
+                Password
+                <Link href="/forgot-password" className="text-xs font-medium text-trace">
+                  Forgot password?
+                </Link>
+              </div>
               <input
                 id="password"
                 type="password"

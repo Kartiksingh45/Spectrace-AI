@@ -22,3 +22,8 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole, name="user_role"), default=UserRole.contributor, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    # Forgot-password: reset_token_hash stores sha256(token), never the token itself, so a DB dump
+    # alone can't be used to reset a password - the real token only ever exists in the emailed link
+    # and the request that redeems it. Null/expired = no reset in flight.
+    reset_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reset_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

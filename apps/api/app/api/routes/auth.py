@@ -1,4 +1,7 @@
+import hashlib
+import secrets
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
@@ -8,7 +11,16 @@ from app.core.config import settings
 from app.core.security import COOKIE_NAME, create_access_token, hash_password, verify_password
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.auth import ChangePasswordRequest, LoginRequest, RegisterRequest, UpdateUserRoleRequest, UserOut
+from app.schemas.auth import (
+    ChangePasswordRequest,
+    ForgotPasswordRequest,
+    LoginRequest,
+    RegisterRequest,
+    ResetPasswordRequest,
+    UpdateUserRoleRequest,
+    UserOut,
+)
+from app.services.email import send_password_reset_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -73,6 +85,40 @@ def change_password(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
 
     user.password_hash = hash_password(payload.new_password)
+    db.commit()
+
+
+@router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT)
+def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)) -> None:
+    """Always responds 204 regardless of whether the email is registered - a different response
+    for "no such account" would let anyone enumerate registered emails one guess at a time."""
+    user = db.query(User).filter(User.email == payload.email).first()
+    if user:
+        token = secrets.token_urlsafe(32)
+        user.reset_token_hash = hashlib.sha256(token.encode()).hexdigest()
+        user.reset_token_expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.password_reset_token_expire_minutes
+        )
+        db.commit()
+        reset_url = f"{settings.frontend_origin}/reset-password?token={token}"
+        send_password_reset_email(user.email, reset_url)
+
+
+@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)) -> None:
+    token_hash = hashlib.sha256(payload.token.encode()).hexdigest()
+    user = db.query(User).filter(User.reset_token_hash == token_hash).first()
+    expires_at = user.reset_token_expires_at if user else None
+    if expires_at is not None and expires_at.tzinfo is None:
+        # SQLite (only used in tests - a real Postgres column always round-trips tz-aware) drops
+        # tzinfo on read, which would otherwise make this comparison raise outright.
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if not user or expires_at is None or expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This reset link is invalid or has expired")
+
+    user.password_hash = hash_password(payload.new_password)
+    user.reset_token_hash = None
+    user.reset_token_expires_at = None
     db.commit()
 
 
